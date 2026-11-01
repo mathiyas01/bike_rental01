@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_endpoints.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -22,7 +23,9 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
   final _vinController = TextEditingController();
   final _makeController = TextEditingController(text: 'Honda');
   final _modelController = TextEditingController();
-  final _yearController = TextEditingController(text: DateTime.now().year.toString());
+  final _yearController = TextEditingController(
+    text: DateTime.now().year.toString(),
+  );
   final _odometerController = TextEditingController(text: '0.0');
   final _notesController = TextEditingController();
 
@@ -43,7 +46,11 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
     super.dispose();
   }
 
-  Future<void> _pickDate(BuildContext context, DateTime? initial, ValueChanged<DateTime> onPicked) async {
+  Future<void> _pickDate(
+    BuildContext context,
+    DateTime? initial,
+    ValueChanged<DateTime> onPicked,
+  ) async {
     final picked = await showDatePicker(
       context: context,
       initialDate: initial ?? DateTime.now().plusYears(1),
@@ -67,11 +74,19 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
         'model': _modelController.text.trim(),
         'yearOfManufacture': int.parse(_yearController.text.trim()),
         'currentOdometer': double.parse(_odometerController.text.trim()),
-        'itpExpiryDate': _itpExpiry != null ? DateFormatter.formatDate(_itpExpiry) : null,
-        'rcaExpiryDate': _rcaExpiry != null ? DateFormatter.formatDate(_rcaExpiry) : null,
-        'cascoExpiryDate': _cascoExpiry != null ? DateFormatter.formatDate(_cascoExpiry) : null,
+        'itpExpiryDate': _itpExpiry != null
+            ? DateFormatter.formatDate(_itpExpiry)
+            : null,
+        'rcaExpiryDate': _rcaExpiry != null
+            ? DateFormatter.formatDate(_rcaExpiry)
+            : null,
+        'cascoExpiryDate': _cascoExpiry != null
+            ? DateFormatter.formatDate(_cascoExpiry)
+            : null,
         'status': 'AVAILABLE',
-        'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        'notes': _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
       };
 
       await client.dio.post(ApiEndpoints.bikes, data: payload);
@@ -80,13 +95,19 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
       if (mounted) {
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Motorbike added successfully'), backgroundColor: AppColors.success),
+          const SnackBar(
+            content: Text('Motorbike added successfully'),
+            backgroundColor: AppColors.success,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {
@@ -99,7 +120,7 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.bikeAdd)),
+      appBar: AppBar(leading: const AppBackButton(), title: Text(l10n.bikeAdd)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -115,7 +136,8 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
                   hintText: 'e.g. B 123 BIK',
                   prefixIcon: const Icon(Icons.badge_outlined),
                 ),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 14),
 
@@ -127,7 +149,8 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
                   hintText: '17 character frame code',
                   prefixIcon: const Icon(Icons.fingerprint),
                 ),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 14),
 
@@ -140,7 +163,8 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
                         labelText: '${l10n.bikeMake} *',
                         hintText: 'Honda, Yamaha, etc.',
                       ),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -151,7 +175,8 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
                         labelText: '${l10n.bikeModel} *',
                         hintText: 'PCX 125, NMAX, etc.',
                       ),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
                     ),
                   ),
                 ],
@@ -167,18 +192,24 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
                       decoration: InputDecoration(
                         labelText: '${l10n.bikeYear} *',
                       ),
-                      validator: (v) => v == null || int.tryParse(v) == null ? 'Invalid year' : null,
+                      validator: (v) => v == null || int.tryParse(v) == null
+                          ? 'Invalid year'
+                          : null,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextFormField(
                       controller: _odometerController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: InputDecoration(
                         labelText: '${l10n.bikeOdometer} *',
                       ),
-                      validator: (v) => v == null || double.tryParse(v) == null ? 'Invalid odometer' : null,
+                      validator: (v) => v == null || double.tryParse(v) == null
+                          ? 'Invalid odometer'
+                          : null,
                     ),
                   ),
                 ],
@@ -188,7 +219,10 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
               // Date Selectors for Compliance
               Text(
                 'Regulatory Compliance & Insurance',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 8),
 
@@ -196,20 +230,39 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.event, color: AppColors.primaryLight),
                 title: Text(l10n.bikeItp),
-                subtitle: Text(_itpExpiry != null ? DateFormatter.formatDate(_itpExpiry) : 'Not set'),
+                subtitle: Text(
+                  _itpExpiry != null
+                      ? DateFormatter.formatDate(_itpExpiry)
+                      : 'Not set',
+                ),
                 trailing: OutlinedButton(
-                  onPressed: () => _pickDate(context, _itpExpiry, (d) => setState(() => _itpExpiry = d)),
+                  onPressed: () => _pickDate(
+                    context,
+                    _itpExpiry,
+                    (d) => setState(() => _itpExpiry = d),
+                  ),
                   child: const Text('Set'),
                 ),
               ),
 
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.shield_outlined, color: AppColors.primaryLight),
+                leading: const Icon(
+                  Icons.shield_outlined,
+                  color: AppColors.primaryLight,
+                ),
                 title: Text(l10n.bikeRca),
-                subtitle: Text(_rcaExpiry != null ? DateFormatter.formatDate(_rcaExpiry) : 'Not set'),
+                subtitle: Text(
+                  _rcaExpiry != null
+                      ? DateFormatter.formatDate(_rcaExpiry)
+                      : 'Not set',
+                ),
                 trailing: OutlinedButton(
-                  onPressed: () => _pickDate(context, _rcaExpiry, (d) => setState(() => _rcaExpiry = d)),
+                  onPressed: () => _pickDate(
+                    context,
+                    _rcaExpiry,
+                    (d) => setState(() => _rcaExpiry = d),
+                  ),
                   child: const Text('Set'),
                 ),
               ),
@@ -228,7 +281,14 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : Text(l10n.commonSave),
               ),
             ],

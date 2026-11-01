@@ -17,6 +17,7 @@ class ApiEndpoints {
   static const String bootstrapOwner = '/api/v1/auth/bootstrap-owner';
   static const String profile = '/api/v1/auth/profile';
   static const String updateLanguage = '/api/v1/auth/profile/language';
+  static const String updateCurrency = '/api/v1/auth/profile/currency';
 
   // Motorbikes
   static const String bikes = '/api/v1/bikes';

@@ -23,6 +23,10 @@ public class CreateCustomerRequest {
     @Size(max = 50, message = "CNP or Tax ID cannot exceed 50 characters")
     private String cnpOrTaxId;
 
+    private LocalDate dateOfBirth;
+
+    private String livingCity;
+
     @Size(max = 50, message = "Driving licence number cannot exceed 50 characters")
     private String drivingLicenceNumber;
 
@@ -63,6 +67,12 @@ public class CreateCustomerRequest {
 
     public String getCnpOrTaxId() { return cnpOrTaxId; }
     public void setCnpOrTaxId(String cnpOrTaxId) { this.cnpOrTaxId = cnpOrTaxId; }
+
+    public LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
+    public String getLivingCity() { return livingCity; }
+    public void setLivingCity(String livingCity) { this.livingCity = livingCity; }
 
     public String getDrivingLicenceNumber() { return drivingLicenceNumber; }
     public void setDrivingLicenceNumber(String drivingLicenceNumber) { this.drivingLicenceNumber = drivingLicenceNumber; }

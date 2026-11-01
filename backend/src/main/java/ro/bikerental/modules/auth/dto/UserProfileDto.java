@@ -10,15 +10,18 @@ public class UserProfileDto {
     private String fullName;
     private String role;
     private String preferredLanguage;
+    private String preferredCurrency;
 
     public UserProfileDto() {}
 
-    public UserProfileDto(UUID id, String email, String fullName, String role, String preferredLanguage) {
+    public UserProfileDto(UUID id, String email, String fullName, String role, String preferredLanguage,
+            String preferredCurrency) {
         this.id = id;
         this.email = email;
         this.fullName = fullName;
         this.role = role;
         this.preferredLanguage = preferredLanguage;
+        this.preferredCurrency = preferredCurrency;
     }
 
     public static UserProfileDto fromEntity(AppUser user) {
@@ -27,7 +30,8 @@ public class UserProfileDto {
                 user.getEmail(),
                 user.getFullName(),
                 user.getRole(),
-                user.getPreferredLanguage()
+                user.getPreferredLanguage(),
+                user.getPreferredCurrency()
         );
     }
 
@@ -45,4 +49,7 @@ public class UserProfileDto {
 
     public String getPreferredLanguage() { return preferredLanguage; }
     public void setPreferredLanguage(String preferredLanguage) { this.preferredLanguage = preferredLanguage; }
+
+    public String getPreferredCurrency() { return preferredCurrency; }
+    public void setPreferredCurrency(String preferredCurrency) { this.preferredCurrency = preferredCurrency; }
 }

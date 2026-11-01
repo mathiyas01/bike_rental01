@@ -11,6 +11,7 @@ class AuthState {
   final bool isLoading;
   final String? errorMessage;
   final Locale locale;
+  final String currency;
   final ThemeMode themeMode;
 
   const AuthState({
@@ -18,6 +19,7 @@ class AuthState {
     this.isLoading = false,
     this.errorMessage,
     this.locale = const Locale('en'),
+    this.currency = 'RON',
     this.themeMode = ThemeMode.dark,
   });
 
@@ -28,6 +30,7 @@ class AuthState {
     bool? isLoading,
     String? errorMessage,
     Locale? locale,
+    String? currency,
     ThemeMode? themeMode,
     bool clearUser = false,
   }) {
@@ -36,6 +39,7 @@ class AuthState {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
       locale: locale ?? this.locale,
+      currency: currency ?? this.currency,
       themeMode: themeMode ?? this.themeMode,
     );
   }
@@ -54,8 +58,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       try {
         final response = await apiClient.dio.get(ApiEndpoints.profile);
         final user = UserModel.fromJson(response.data);
-        final userLocale = user.preferredLanguage == 'ro' ? const Locale('ro') : const Locale('en');
-        state = state.copyWith(user: user, locale: userLocale);
+        final userLocale = user.preferredLanguage == 'ro'
+            ? const Locale('ro')
+            : const Locale('en');
+        state = state.copyWith(
+          user: user,
+          locale: userLocale,
+          currency: user.preferredCurrency,
+        );
       } catch (_) {
         await apiClient.clearToken();
         state = state.copyWith(clearUser: true);
@@ -77,18 +87,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       await apiClient.saveToken(token);
 
-      final userLocale = user.preferredLanguage == 'ro' ? const Locale('ro') : const Locale('en');
+      final userLocale = user.preferredLanguage == 'ro'
+          ? const Locale('ro')
+          : const Locale('en');
       state = state.copyWith(
         user: user,
         isLoading: false,
         locale: userLocale,
+        currency: user.preferredCurrency,
       );
       return true;
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
       return false;
     }
   }
@@ -99,7 +109,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> setLanguage(String languageCode) async {
-    final newLocale = languageCode == 'ro' ? const Locale('ro') : const Locale('en');
+    final newLocale = languageCode == 'ro'
+        ? const Locale('ro')
+        : const Locale('en');
     state = state.copyWith(locale: newLocale);
 
     if (state.isAuthenticated) {
@@ -112,8 +124,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<void> setCurrency(String currency) async {
+    final normalizedCurrency = currency.toUpperCase();
+    state = state.copyWith(currency: normalizedCurrency);
+
+    if (state.isAuthenticated) {
+      try {
+        await apiClient.dio.patch(
+          ApiEndpoints.updateCurrency,
+          data: {'preferredCurrency': normalizedCurrency},
+        );
+      } catch (_) {}
+    }
+  }
+
   void toggleTheme() {
-    final next = state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    final next = state.themeMode == ThemeMode.dark
+        ? ThemeMode.light
+        : ThemeMode.dark;
     state = state.copyWith(themeMode: next);
   }
 }

@@ -21,13 +21,10 @@ class AppScaffold extends StatelessWidget {
         context.go('/bikes');
         break;
       case 2:
-        context.go('/customers');
-        break;
-      case 3:
         context.go('/rentals');
         break;
-      case 4:
-        context.go('/more');
+      case 3:
+        context.go('/inventory');
         break;
     }
   }
@@ -53,19 +50,14 @@ class AppScaffold extends StatelessWidget {
             label: l10n.navBikes,
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.people_alt_outlined),
-            activeIcon: const Icon(Icons.people_alt),
-            label: l10n.navCustomers,
-          ),
-          BottomNavigationBarItem(
             icon: const Icon(Icons.description_outlined),
             activeIcon: const Icon(Icons.description),
             label: l10n.navRentals,
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.more_horiz),
-            activeIcon: const Icon(Icons.more_horiz_outlined),
-            label: l10n.navMore,
+            icon: const Icon(Icons.inventory_2_outlined),
+            activeIcon: const Icon(Icons.inventory_2),
+            label: l10n.navInventory,
           ),
         ],
       ),

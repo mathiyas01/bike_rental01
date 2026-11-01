@@ -5,9 +5,11 @@ import '../../../core/api/api_endpoints.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../bikes/providers/bike_provider.dart';
 import '../../customers/providers/customer_provider.dart';
+import '../../customers/models/customer_model.dart';
 import '../providers/rental_provider.dart';
 
 class CreateRentalScreen extends ConsumerStatefulWidget {
@@ -35,7 +37,9 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
   String _currency = 'RON';
   final _depositController = TextEditingController(text: '500.00');
   String _depositCurrency = 'RON';
-  final _notesController = TextEditingController(text: 'Helmet and chain lock included.');
+  final _notesController = TextEditingController(
+    text: 'Helmet and chain lock included.',
+  );
   bool _isSubmitting = false;
 
   @override
@@ -57,13 +61,19 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedCustomerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a customer'), backgroundColor: AppColors.danger),
+        const SnackBar(
+          content: Text('Please select a customer'),
+          backgroundColor: AppColors.danger,
+        ),
       );
       return;
     }
     if (_selectedBikeId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an available motorbike'), backgroundColor: AppColors.danger),
+        const SnackBar(
+          content: Text('Please select an available motorbike'),
+          backgroundColor: AppColors.danger,
+        ),
       );
       return;
     }
@@ -76,14 +86,18 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
         'customerId': _selectedCustomerId,
         'motorbikeId': _selectedBikeId,
         'startDate': DateFormatter.formatDate(_startDate),
-        'plannedEndDate': _plannedEndDate != null ? DateFormatter.formatDate(_plannedEndDate) : null,
+        'plannedEndDate': _plannedEndDate != null
+            ? DateFormatter.formatDate(_plannedEndDate)
+            : null,
         'weeklyRate': double.parse(_rateController.text.trim()),
         'currency': _currency,
         'depositAmount': double.parse(_depositController.text.trim()),
         'depositCurrency': _depositCurrency,
         'paymentFrequency': 'WEEKLY',
         'scheduleAnchorDay': 'START_DAY',
-        'termsAndNotes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        'termsAndNotes': _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
       };
 
       await client.dio.post(ApiEndpoints.rentals, data: payload);
@@ -94,13 +108,21 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
       if (mounted) {
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rental contract created & bike status set to RENTED'), backgroundColor: AppColors.success),
+          const SnackBar(
+            content: Text(
+              'Rental contract created & bike status set to RENTED',
+            ),
+            backgroundColor: AppColors.success,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {
@@ -115,7 +137,10 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
     final bikesAsync = ref.watch(bikesListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.rentalCreate)),
+      appBar: AppBar(
+        leading: const AppBackButton(),
+        title: Text(l10n.rentalCreate),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -128,20 +153,43 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text(e.toString()),
                 data: (customers) {
-                  return DropdownButtonFormField<String>(
-                    initialValue: _selectedCustomerId,
-                    decoration: InputDecoration(
-                      labelText: '${l10n.customerTitle} *',
-                      prefixIcon: const Icon(Icons.person_outline),
-                    ),
-                    items: customers.map((c) {
-                      return DropdownMenuItem(
-                        value: c.id,
-                        child: Text('${c.fullName} (${c.phone})', overflow: TextOverflow.ellipsis),
-                      );
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedCustomerId = val),
-                    validator: (v) => v == null ? 'Customer selection required' : null,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedCustomerId,
+                        decoration: InputDecoration(
+                          labelText: '${l10n.customerTitle} *',
+                          prefixIcon: const Icon(Icons.person_outline),
+                        ),
+                        items: customers.map((c) {
+                          return DropdownMenuItem(
+                            value: c.id,
+                            child: Text(
+                              '${c.fullName} (${c.phone})',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) =>
+                            setState(() => _selectedCustomerId = val),
+                        validator: (v) =>
+                            v == null ? 'Customer selection required' : null,
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final customer = await context.push<CustomerModel>(
+                            '/customers/add?fromRental=true',
+                          );
+                          if (customer != null && mounted) {
+                            setState(() => _selectedCustomerId = customer.id);
+                          }
+                        },
+                        icon: const Icon(Icons.person_add_outlined),
+                        label: const Text('Add new customer'),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -152,7 +200,13 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text(e.toString()),
                 data: (bikes) {
-                  final availableBikes = bikes.where((b) => b.status == 'AVAILABLE' || b.id == widget.initialBikeId).toList();
+                  final availableBikes = bikes
+                      .where(
+                        (b) =>
+                            b.status == 'AVAILABLE' ||
+                            b.id == widget.initialBikeId,
+                      )
+                      .toList();
                   return DropdownButtonFormField<String>(
                     initialValue: _selectedBikeId,
                     decoration: InputDecoration(
@@ -162,11 +216,15 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
                     items: availableBikes.map((b) {
                       return DropdownMenuItem(
                         value: b.id,
-                        child: Text('${b.registrationNumber} - ${b.make} ${b.model}', overflow: TextOverflow.ellipsis),
+                        child: Text(
+                          '${b.registrationNumber} - ${b.make} ${b.model}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       );
                     }).toList(),
                     onChanged: (val) => setState(() => _selectedBikeId = val),
-                    validator: (v) => v == null ? 'Motorbike selection required' : null,
+                    validator: (v) =>
+                        v == null ? 'Motorbike selection required' : null,
                   );
                 },
               ),
@@ -175,7 +233,10 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
               // Start Date Picker
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.calendar_today_outlined, color: AppColors.primaryLight),
+                leading: const Icon(
+                  Icons.calendar_today_outlined,
+                  color: AppColors.primaryLight,
+                ),
                 title: Text(l10n.rentalStartDate),
                 subtitle: Text(DateFormatter.formatDate(_startDate)),
                 trailing: OutlinedButton(
@@ -201,12 +262,16 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
                     flex: 2,
                     child: TextFormField(
                       controller: _rateController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: InputDecoration(
                         labelText: '${l10n.rentalWeeklyRate} *',
                         prefixIcon: const Icon(Icons.payments_outlined),
                       ),
-                      validator: (v) => v == null || double.tryParse(v) == null ? 'Invalid rate' : null,
+                      validator: (v) => v == null || double.tryParse(v) == null
+                          ? 'Invalid rate'
+                          : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -214,7 +279,9 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
                     flex: 1,
                     child: DropdownButtonFormField<String>(
                       initialValue: _currency,
-                      decoration: InputDecoration(labelText: l10n.commonCurrency),
+                      decoration: InputDecoration(
+                        labelText: l10n.commonCurrency,
+                      ),
                       items: const [
                         DropdownMenuItem(value: 'RON', child: Text('RON')),
                         DropdownMenuItem(value: 'EUR', child: Text('EUR')),
@@ -237,12 +304,16 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
                     flex: 2,
                     child: TextFormField(
                       controller: _depositController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: InputDecoration(
                         labelText: '${l10n.rentalDeposit} *',
                         prefixIcon: const Icon(Icons.shield_outlined),
                       ),
-                      validator: (v) => v == null || double.tryParse(v) == null ? 'Invalid deposit' : null,
+                      validator: (v) => v == null || double.tryParse(v) == null
+                          ? 'Invalid deposit'
+                          : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -250,7 +321,9 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
                     flex: 1,
                     child: DropdownButtonFormField<String>(
                       initialValue: _depositCurrency,
-                      decoration: const InputDecoration(labelText: 'Deposit Curr'),
+                      decoration: const InputDecoration(
+                        labelText: 'Deposit Curr',
+                      ),
                       items: const [
                         DropdownMenuItem(value: 'RON', child: Text('RON')),
                         DropdownMenuItem(value: 'EUR', child: Text('EUR')),
@@ -278,7 +351,14 @@ class _CreateRentalScreenState extends ConsumerState<CreateRentalScreen> {
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : Text(l10n.rentalCreate),
               ),
             ],

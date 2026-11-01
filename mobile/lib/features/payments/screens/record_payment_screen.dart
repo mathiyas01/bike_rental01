@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../customers/providers/customer_provider.dart';
 import '../providers/payment_provider.dart';
 
@@ -38,6 +39,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
   void initState() {
     super.initState();
     _selectedCustomerId = widget.preselectedCustomerId;
+    _selectedCurrency = ref.read(authProvider).currency;
   }
 
   @override
@@ -51,9 +53,9 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedCustomerId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a customer')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a customer')));
       return;
     }
 
@@ -74,17 +76,18 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
       'allocationMode': 'AUTO_FIFO',
     };
 
-    final success =
-        await ref.read(paymentProvider.notifier).recordPayment(payload);
+    final success = await ref
+        .read(paymentProvider.notifier)
+        .recordPayment(payload);
 
     setState(() => _isSubmitting = false);
 
     if (mounted) {
       final l10n = AppLocalizations.of(context)!;
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.commonSuccess)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.commonSuccess)));
         context.pop();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -102,9 +105,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
     final customers = ref.watch(customersListProvider).valueOrNull ?? [];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.paymentRecord),
-      ),
+      appBar: AppBar(title: Text(l10n.paymentRecord)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -154,8 +155,9 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                   labelText: '${l10n.commonAmount} ($_selectedCurrency)',
                   prefixIcon: const Icon(Icons.attach_money),
                 ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 validator: (val) {
                   if (val == null || val.trim().isEmpty) {
                     return 'Amount is required';
@@ -178,12 +180,17 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                 ),
                 items: [
                   DropdownMenuItem(
-                      value: 'CASH', child: Text(l10n.paymentMethodCash)),
+                    value: 'CASH',
+                    child: Text(l10n.paymentMethodCash),
+                  ),
                   DropdownMenuItem(
-                      value: 'BANK_TRANSFER',
-                      child: Text(l10n.paymentMethodBank)),
+                    value: 'BANK_TRANSFER',
+                    child: Text(l10n.paymentMethodBank),
+                  ),
                   DropdownMenuItem(
-                      value: 'CARD', child: Text(l10n.paymentMethodCard)),
+                    value: 'CARD',
+                    child: Text(l10n.paymentMethodCard),
+                  ),
                 ],
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedPaymentMethod = val);
@@ -233,14 +240,19 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.auto_awesome,
-                        color: Colors.blue, size: 20),
+                    const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.blue,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         l10n.paymentAutoFifo,
                         style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w500),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
@@ -277,7 +289,9 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                     : Text(
                         l10n.paymentRecord,
                         style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
             ],

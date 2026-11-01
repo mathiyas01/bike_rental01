@@ -4,6 +4,8 @@ class CustomerModel {
   final String phone;
   final String? email;
   final String? cnpOrTaxId;
+  final DateTime? dateOfBirth;
+  final String? livingCity;
   final String? drivingLicenceNumber;
   final String? licenceCategories;
   final DateTime? licenceExpiryDate;
@@ -17,6 +19,8 @@ class CustomerModel {
     required this.phone,
     this.email,
     this.cnpOrTaxId,
+    this.dateOfBirth,
+    this.livingCity,
     this.drivingLicenceNumber,
     this.licenceCategories,
     this.licenceExpiryDate,
@@ -32,9 +36,15 @@ class CustomerModel {
       phone: json['phone']?.toString() ?? '',
       email: json['email']?.toString(),
       cnpOrTaxId: json['cnpOrTaxId']?.toString(),
+      dateOfBirth: json['dateOfBirth'] != null
+          ? DateTime.tryParse(json['dateOfBirth'].toString())
+          : null,
+      livingCity: json['livingCity']?.toString(),
       drivingLicenceNumber: json['drivingLicenceNumber']?.toString(),
       licenceCategories: json['licenceCategories']?.toString(),
-      licenceExpiryDate: json['licenceExpiryDate'] != null ? DateTime.tryParse(json['licenceExpiryDate'].toString()) : null,
+      licenceExpiryDate: json['licenceExpiryDate'] != null
+          ? DateTime.tryParse(json['licenceExpiryDate'].toString())
+          : null,
       address: json['address']?.toString(),
       notes: json['notes']?.toString(),
       archived: json['archived'] == true,
@@ -80,7 +90,9 @@ class CustomerBalanceSummary {
     final balMap = <String, CustomerBalanceItem>{};
     if (json['balances'] is Map) {
       (json['balances'] as Map).forEach((k, v) {
-        balMap[k.toString()] = CustomerBalanceItem.fromJson(v as Map<String, dynamic>);
+        balMap[k.toString()] = CustomerBalanceItem.fromJson(
+          v as Map<String, dynamic>,
+        );
       });
     }
     return CustomerBalanceSummary(

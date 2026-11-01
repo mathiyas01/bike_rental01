@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../models/part_model.dart';
 import '../providers/inventory_provider.dart';
@@ -28,7 +29,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final l10n = AppLocalizations.of(context)!;
     final qtyController = TextEditingController();
     final costController = TextEditingController(
-      text: part.defaultUnitCost > 0 ? part.defaultUnitCost.toStringAsFixed(2) : '',
+      text: part.defaultUnitCost > 0
+          ? part.defaultUnitCost.toStringAsFixed(2)
+          : '',
     );
     final reasonController = TextEditingController();
     String movementType = 'PURCHASE'; // PURCHASE, USAGE_NON_SERVICE, ADJUSTMENT
@@ -57,7 +60,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     initialValue: movementType,
-                    decoration: const InputDecoration(labelText: 'Movement Type'),
+                    decoration: const InputDecoration(
+                      labelText: 'Movement Type',
+                    ),
                     items: const [
                       DropdownMenuItem(
                         value: 'PURCHASE',
@@ -82,8 +87,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     decoration: InputDecoration(
                       labelText: 'Quantity (${part.unitOfMeasure})',
                     ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     validator: (val) {
                       if (val == null || val.trim().isEmpty) {
                         return 'Quantity required';
@@ -102,8 +108,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       decoration: InputDecoration(
                         labelText: 'Unit Cost (${part.costCurrency})',
                       ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -166,12 +173,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: Text(l10n.inventoryTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () =>
-                ref.read(inventoryProvider.notifier).loadParts(),
+            onPressed: () => ref.read(inventoryProvider.notifier).loadParts(),
           ),
         ],
       ),
@@ -195,13 +202,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       prefixIcon: const Icon(Icons.search),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     onSubmitted: (val) {
-                      ref.read(inventoryProvider.notifier).setFilter(
+                      ref
+                          .read(inventoryProvider.notifier)
+                          .setFilter(
                             search: val.trim(),
                             lowStockOnly: _lowStockOnly,
                           );
@@ -219,7 +230,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ),
                   onSelected: (selected) {
                     setState(() => _lowStockOnly = selected);
-                    ref.read(inventoryProvider.notifier).setFilter(
+                    ref
+                        .read(inventoryProvider.notifier)
+                        .setFilter(
                           lowStockOnly: selected,
                           search: _searchController.text.trim(),
                         );
@@ -234,27 +247,27 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             child: inventoryState.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : inventoryState.parts.isEmpty
-                    ? EmptyState(
-                        icon: Icons.inventory_2_outlined,
-                        title: 'No Parts in Inventory',
-                        subtitle: _lowStockOnly
-                            ? 'Great news! All spare parts are above minimum stock levels.'
-                            : 'Add spare parts, oil, tires, and maintenance consumables.',
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () =>
-                            ref.read(inventoryProvider.notifier).loadParts(),
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: inventoryState.parts.length,
-                          separatorBuilder: (_, index) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final part = inventoryState.parts[index];
-                            return _buildPartCard(context, part, l10n);
-                          },
-                        ),
-                      ),
+                ? EmptyState(
+                    icon: Icons.inventory_2_outlined,
+                    title: 'No Parts in Inventory',
+                    subtitle: _lowStockOnly
+                        ? 'Great news! All spare parts are above minimum stock levels.'
+                        : 'Add spare parts, oil, tires, and maintenance consumables.',
+                  )
+                : RefreshIndicator(
+                    onRefresh: () =>
+                        ref.read(inventoryProvider.notifier).loadParts(),
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: inventoryState.parts.length,
+                      separatorBuilder: (_, index) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final part = inventoryState.parts[index];
+                        return _buildPartCard(context, part, l10n);
+                      },
+                    ),
+                  ),
           ),
         ],
       ),
@@ -262,7 +275,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   }
 
   Widget _buildPartCard(
-      BuildContext context, Part part, AppLocalizations l10n) {
+    BuildContext context,
+    Part part,
+    AppLocalizations l10n,
+  ) {
     final isLow = part.isLowStock;
 
     return Card(
@@ -288,7 +304,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.blueGrey.withAlpha(30),
                         borderRadius: BorderRadius.circular(6),
@@ -304,11 +322,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -320,8 +340,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 ),
                 if (isLow)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.red.withAlpha(20),
                       borderRadius: BorderRadius.circular(6),
@@ -346,9 +368,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             const SizedBox(height: 8),
             Text(
               part.name,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             if (part.description != null && part.description!.isNotEmpty) ...[
               const SizedBox(height: 4),
@@ -393,7 +415,9 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     ),
                     Text(
                       CurrencyFormatter.format(
-                          part.defaultUnitCost, part.costCurrency),
+                        part.defaultUnitCost,
+                        part.costCurrency,
+                      ),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -403,8 +427,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     OutlinedButton.icon(
                       onPressed: () => _showStockMovementDialog(part),
                       icon: const Icon(Icons.sync_alt, size: 14),
-                      label: Text(l10n.inventoryStockMove,
-                          style: const TextStyle(fontSize: 12)),
+                      label: Text(
+                        l10n.inventoryStockMove,
+                        style: const TextStyle(fontSize: 12),
+                      ),
                       style: OutlinedButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -420,4 +446,3 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     );
   }
 }
-

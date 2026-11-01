@@ -43,6 +43,8 @@ public class CustomerService {
                 request.getGdprConsentDate(),
                 request.getNotes()
         );
+        customer.setDateOfBirth(request.getDateOfBirth());
+        customer.setLivingCity(request.getLivingCity() != null ? request.getLivingCity().trim() : null);
 
         Customer saved = customerRepository.save(customer);
         return CustomerDto.fromEntity(saved);

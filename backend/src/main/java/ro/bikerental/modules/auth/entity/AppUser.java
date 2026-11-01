@@ -27,6 +27,9 @@ public class AppUser {
     @Column(name = "preferred_language", nullable = false, length = 10)
     private String preferredLanguage = "en";
 
+    @Column(name = "preferred_currency", nullable = false, length = 3)
+    private String preferredCurrency = "RON";
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
@@ -68,6 +71,11 @@ public class AppUser {
 
     public String getPreferredLanguage() { return preferredLanguage; }
     public void setPreferredLanguage(String preferredLanguage) { this.preferredLanguage = preferredLanguage; }
+
+    public String getPreferredCurrency() { return preferredCurrency; }
+    public void setPreferredCurrency(String preferredCurrency) {
+        this.preferredCurrency = preferredCurrency != null ? preferredCurrency.toUpperCase().trim() : "RON";
+    }
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }

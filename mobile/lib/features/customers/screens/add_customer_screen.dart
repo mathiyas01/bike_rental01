@@ -6,10 +6,13 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../models/customer_model.dart';
 import '../providers/customer_provider.dart';
 
 class AddCustomerScreen extends ConsumerStatefulWidget {
-  const AddCustomerScreen({super.key});
+  final bool returnToRental;
+
+  const AddCustomerScreen({super.key, this.returnToRental = false});
 
   @override
   ConsumerState<AddCustomerScreen> createState() => _AddCustomerScreenState();
@@ -22,12 +25,14 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
   final _phoneController = TextEditingController(text: '+40');
   final _emailController = TextEditingController();
   final _cnpController = TextEditingController();
+  final _cityController = TextEditingController();
   final _licenceController = TextEditingController();
   final _categoriesController = TextEditingController(text: 'A, B');
   final _addressController = TextEditingController();
   final _notesController = TextEditingController();
 
   DateTime? _licenceExpiry;
+  DateTime? _dateOfBirth;
   bool _isSubmitting = false;
 
   @override
@@ -36,6 +41,7 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
     _phoneController.dispose();
     _emailController.dispose();
     _cnpController.dispose();
+    _cityController.dispose();
     _licenceController.dispose();
     _categoriesController.dispose();
     _addressController.dispose();
@@ -53,28 +59,63 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
       final payload = {
         'fullName': _nameController.text.trim(),
         'phone': _phoneController.text.trim(),
-        'email': _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
-        'cnpOrTaxId': _cnpController.text.trim().isEmpty ? null : _cnpController.text.trim(),
-        'drivingLicenceNumber': _licenceController.text.trim().isEmpty ? null : _licenceController.text.trim(),
-        'licenceCategories': _categoriesController.text.trim().isEmpty ? null : _categoriesController.text.trim(),
-        'licenceExpiryDate': _licenceExpiry != null ? DateFormatter.formatDate(_licenceExpiry) : null,
-        'address': _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
-        'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        'email': _emailController.text.trim().isEmpty
+            ? null
+            : _emailController.text.trim(),
+        'cnpOrTaxId': _cnpController.text.trim().isEmpty
+            ? null
+            : _cnpController.text.trim(),
+        'dateOfBirth': _dateOfBirth != null
+            ? DateFormatter.formatDate(_dateOfBirth)
+            : null,
+        'livingCity': _cityController.text.trim().isEmpty
+            ? null
+            : _cityController.text.trim(),
+        'drivingLicenceNumber': _licenceController.text.trim().isEmpty
+            ? null
+            : _licenceController.text.trim(),
+        'licenceCategories': _categoriesController.text.trim().isEmpty
+            ? null
+            : _categoriesController.text.trim(),
+        'licenceExpiryDate': _licenceExpiry != null
+            ? DateFormatter.formatDate(_licenceExpiry)
+            : null,
+        'address': _addressController.text.trim().isEmpty
+            ? null
+            : _addressController.text.trim(),
+        'notes': _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
       };
 
-      await client.dio.post(ApiEndpoints.customers, data: payload);
+      final response = await client.dio.post(
+        ApiEndpoints.customers,
+        data: payload,
+      );
       ref.invalidate(customersListProvider);
 
       if (mounted) {
+        if (widget.returnToRental) {
+          context.pop(
+            CustomerModel.fromJson(response.data as Map<String, dynamic>),
+          );
+          return;
+        }
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Customer registered successfully'), backgroundColor: AppColors.success),
+          const SnackBar(
+            content: Text('Customer registered successfully'),
+            backgroundColor: AppColors.success,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     } finally {
@@ -102,7 +143,8 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
                   hintText: 'e.g. Andrei Vasilescu',
                   prefixIcon: const Icon(Icons.person_outline),
                 ),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 14),
 
@@ -114,7 +156,8 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
                   hintText: '+40 721 234 567',
                   prefixIcon: const Icon(Icons.phone_outlined),
                 ),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 14),
 
@@ -131,19 +174,61 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
 
               TextFormField(
                 controller: _cnpController,
-                keyboardType: TextInputType.number,
+                keyboardType: TextInputType.text,
                 decoration: InputDecoration(
-                  labelText: l10n.customerCnp,
-                  hintText: '13-digit Romanian CNP',
+                  labelText: 'NIC / Passport number',
+                  hintText: 'Enter NIC or passport number',
                   prefixIcon: const Icon(Icons.badge_outlined),
                 ),
               ),
               const SizedBox(height: 20),
 
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.cake_outlined,
+                  color: AppColors.primaryLight,
+                ),
+                title: const Text('Date of birth'),
+                subtitle: Text(
+                  _dateOfBirth != null
+                      ? DateFormatter.formatDate(_dateOfBirth)
+                      : 'Not set',
+                ),
+                trailing: OutlinedButton(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now().subtract(
+                        const Duration(days: 365 * 25),
+                      ),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) setState(() => _dateOfBirth = picked);
+                  },
+                  child: const Text('Set'),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              TextFormField(
+                controller: _cityController,
+                decoration: const InputDecoration(
+                  labelText: 'Living city',
+                  hintText: 'e.g. Bucharest',
+                  prefixIcon: Icon(Icons.location_city_outlined),
+                ),
+              ),
+              const SizedBox(height: 14),
+
               // Driving Licence Group
               Text(
                 'Driving Licence & Qualification',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 10),
 
@@ -176,12 +261,18 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.event, color: AppColors.primaryLight),
                 title: Text(l10n.customerLicenceExpiry),
-                subtitle: Text(_licenceExpiry != null ? DateFormatter.formatDate(_licenceExpiry) : 'Not set'),
+                subtitle: Text(
+                  _licenceExpiry != null
+                      ? DateFormatter.formatDate(_licenceExpiry)
+                      : 'Not set',
+                ),
                 trailing: OutlinedButton(
                   onPressed: () async {
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                      initialDate: DateTime.now().add(
+                        const Duration(days: 365 * 5),
+                      ),
                       firstDate: DateTime(2020),
                       lastDate: DateTime(2050),
                     );
@@ -215,7 +306,14 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : Text(l10n.commonSave),
               ),
             ],

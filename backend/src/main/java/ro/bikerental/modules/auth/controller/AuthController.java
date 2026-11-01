@@ -56,4 +56,12 @@ public class AuthController {
             @Valid @RequestBody UpdateLanguageRequest request) {
         return ResponseEntity.ok(authService.updateLanguage(userPrincipal.getId(), request.getPreferredLanguage()));
     }
+
+    @PatchMapping("/profile/currency")
+    @Operation(summary = "Update preferred display currency (RON, EUR, or USD)")
+    public ResponseEntity<UserProfileDto> updateCurrency(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @Valid @RequestBody UpdateCurrencyRequest request) {
+        return ResponseEntity.ok(authService.updateCurrency(userPrincipal.getId(), request.getPreferredCurrency()));
+    }
 }

@@ -4,6 +4,7 @@ class UserModel {
   final String fullName;
   final String role;
   final String preferredLanguage;
+  final String preferredCurrency;
 
   UserModel({
     required this.id,
@@ -11,6 +12,7 @@ class UserModel {
     required this.fullName,
     required this.role,
     required this.preferredLanguage,
+    required this.preferredCurrency,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,8 @@ class UserModel {
       fullName: json['fullName']?.toString() ?? '',
       role: json['role']?.toString() ?? 'ROLE_OWNER',
       preferredLanguage: json['preferredLanguage']?.toString() ?? 'en',
+      preferredCurrency:
+          json['preferredCurrency']?.toString().toUpperCase() ?? 'RON',
     );
   }
 
@@ -30,6 +34,7 @@ class UserModel {
       'fullName': fullName,
       'role': role,
       'preferredLanguage': preferredLanguage,
+      'preferredCurrency': preferredCurrency,
     };
   }
 }

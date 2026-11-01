@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../providers/inventory_provider.dart';
 
 class AddPartScreen extends ConsumerStatefulWidget {
@@ -37,13 +38,7 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
     'GENERAL',
   ];
 
-  final List<String> _units = [
-    'PCS',
-    'LITERS',
-    'SETS',
-    'METERS',
-    'PAIRS',
-  ];
+  final List<String> _units = ['PCS', 'LITERS', 'SETS', 'METERS', 'PAIRS'];
 
   @override
   void dispose() {
@@ -74,23 +69,25 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
       'costCurrency': _costCurrency,
     };
 
-    final success =
-        await ref.read(inventoryProvider.notifier).createPart(payload);
+    final success = await ref
+        .read(inventoryProvider.notifier)
+        .createPart(payload);
 
     setState(() => _isSubmitting = false);
 
     if (mounted) {
       final l10n = AppLocalizations.of(context)!;
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.commonSuccess)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.commonSuccess)));
         context.pop();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text(ref.read(inventoryProvider).error ?? l10n.commonError),
+            content: Text(
+              ref.read(inventoryProvider).error ?? l10n.commonError,
+            ),
           ),
         );
       }
@@ -103,6 +100,7 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: Text(l10n.inventoryPartAdd),
       ),
       body: SingleChildScrollView(
@@ -121,8 +119,9 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
                   prefixIcon: const Icon(Icons.qr_code),
                 ),
                 textCapitalization: TextCapitalization.characters,
-                validator: (val) =>
-                    (val == null || val.trim().isEmpty) ? 'Part code required' : null,
+                validator: (val) => (val == null || val.trim().isEmpty)
+                    ? 'Part code required'
+                    : null,
               ),
               const SizedBox(height: 16),
 
@@ -134,8 +133,9 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
                   hintText: 'e.g. Motul 7100 10W40 4T (1L)',
                   prefixIcon: const Icon(Icons.label_outline),
                 ),
-                validator: (val) =>
-                    (val == null || val.trim().isEmpty) ? 'Part name required' : null,
+                validator: (val) => (val == null || val.trim().isEmpty)
+                    ? 'Part name required'
+                    : null,
               ),
               const SizedBox(height: 16),
 
@@ -187,10 +187,14 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
                         labelText: l10n.inventoryCurrentStock,
                         prefixIcon: const Icon(Icons.inventory),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (val) {
-                        if (val == null || val.trim().isEmpty) return 'Required';
-                        if (double.tryParse(val.trim()) == null) return 'Invalid';
+                        if (val == null || val.trim().isEmpty)
+                          return 'Required';
+                        if (double.tryParse(val.trim()) == null)
+                          return 'Invalid';
                         return null;
                       },
                     ),
@@ -203,10 +207,14 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
                         labelText: l10n.inventoryMinLevel,
                         prefixIcon: const Icon(Icons.warning_amber),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (val) {
-                        if (val == null || val.trim().isEmpty) return 'Required';
-                        if (double.tryParse(val.trim()) == null) return 'Invalid';
+                        if (val == null || val.trim().isEmpty)
+                          return 'Required';
+                        if (double.tryParse(val.trim()) == null)
+                          return 'Invalid';
                         return null;
                       },
                     ),
@@ -226,10 +234,14 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
                         labelText: l10n.inventoryUnitCost,
                         prefixIcon: const Icon(Icons.attach_money),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (val) {
-                        if (val == null || val.trim().isEmpty) return 'Required';
-                        if (double.tryParse(val.trim()) == null) return 'Invalid';
+                        if (val == null || val.trim().isEmpty)
+                          return 'Required';
+                        if (double.tryParse(val.trim()) == null)
+                          return 'Invalid';
                         return null;
                       },
                     ),
@@ -285,7 +297,9 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
                     : Text(
                         l10n.inventoryPartAdd,
                         style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
             ],
@@ -295,4 +309,3 @@ class _AddPartScreenState extends ConsumerState<AddPartScreen> {
     );
   }
 }
-

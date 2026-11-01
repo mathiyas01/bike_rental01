@@ -25,6 +25,12 @@ public class Customer {
     @Column(name = "cnp_or_tax_id", length = 50)
     private String cnpOrTaxId;
 
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(name = "living_city", length = 100)
+    private String livingCity;
+
     @Column(name = "driving_licence_number", length = 50)
     private String drivingLicenceNumber;
 
@@ -88,6 +94,12 @@ public class Customer {
 
     public String getCnpOrTaxId() { return cnpOrTaxId; }
     public void setCnpOrTaxId(String cnpOrTaxId) { this.cnpOrTaxId = cnpOrTaxId; }
+
+    public LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
+    public String getLivingCity() { return livingCity; }
+    public void setLivingCity(String livingCity) { this.livingCity = livingCity; }
 
     public String getDrivingLicenceNumber() { return drivingLicenceNumber; }
     public void setDrivingLicenceNumber(String drivingLicenceNumber) { this.drivingLicenceNumber = drivingLicenceNumber; }

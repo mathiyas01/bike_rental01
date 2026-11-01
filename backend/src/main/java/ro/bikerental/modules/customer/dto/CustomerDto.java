@@ -12,6 +12,8 @@ public class CustomerDto {
     private String phone;
     private String email;
     private String cnpOrTaxId;
+    private LocalDate dateOfBirth;
+    private String livingCity;
     private String drivingLicenceNumber;
     private String licenceCategories;
     private LocalDate licenceExpiryDate;
@@ -31,6 +33,8 @@ public class CustomerDto {
         dto.setPhone(customer.getPhone());
         dto.setEmail(customer.getEmail());
         dto.setCnpOrTaxId(customer.getCnpOrTaxId());
+        dto.setDateOfBirth(customer.getDateOfBirth());
+        dto.setLivingCity(customer.getLivingCity());
         dto.setDrivingLicenceNumber(customer.getDrivingLicenceNumber());
         dto.setLicenceCategories(customer.getLicenceCategories());
         dto.setLicenceExpiryDate(customer.getLicenceExpiryDate());
@@ -57,6 +61,12 @@ public class CustomerDto {
 
     public String getCnpOrTaxId() { return cnpOrTaxId; }
     public void setCnpOrTaxId(String cnpOrTaxId) { this.cnpOrTaxId = cnpOrTaxId; }
+
+    public LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
+    public String getLivingCity() { return livingCity; }
+    public void setLivingCity(String livingCity) { this.livingCity = livingCity; }
 
     public String getDrivingLicenceNumber() { return drivingLicenceNumber; }
     public void setDrivingLicenceNumber(String drivingLicenceNumber) { this.drivingLicenceNumber = drivingLicenceNumber; }

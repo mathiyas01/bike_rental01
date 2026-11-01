@@ -74,6 +74,7 @@ class DashboardScreen extends ConsumerWidget {
         ),
         data: (data) {
           final localeStr = authState.locale.languageCode;
+          final selectedCurrency = authState.currency;
 
           return RefreshIndicator(
             onRefresh: () async => ref.refresh(dashboardDataProvider),
@@ -112,10 +113,15 @@ class DashboardScreen extends ConsumerWidget {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: LinearProgressIndicator(
-                            value: (data.utilizationRate / 100.0).clamp(0.0, 1.0),
+                            value: (data.utilizationRate / 100.0).clamp(
+                              0.0,
+                              1.0,
+                            ),
                             minHeight: 10,
                             backgroundColor: AppColors.darkBorder,
-                            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryLight),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              AppColors.primaryLight,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -124,15 +130,24 @@ class DashboardScreen extends ConsumerWidget {
                           children: [
                             Text(
                               '${l10n.statusRented}: ${data.activeRentals}',
-                              style: const TextStyle(fontSize: 12, color: AppColors.textDarkSecondary),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textDarkSecondary,
+                              ),
                             ),
                             Text(
                               '${l10n.statusAvailable}: ${data.availableBikes}',
-                              style: const TextStyle(fontSize: 12, color: AppColors.success),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.success,
+                              ),
                             ),
                             Text(
                               '${l10n.statusInService}: ${data.inServiceBikes}',
-                              style: const TextStyle(fontSize: 12, color: AppColors.warning),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.warning,
+                              ),
                             ),
                           ],
                         ),
@@ -142,7 +157,7 @@ class DashboardScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // Multi-Currency Monthly Revenue Card
+                // Monthly Revenue in the selected currency
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -159,36 +174,66 @@ class DashboardScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const Icon(Icons.account_balance_wallet_outlined, size: 20, color: AppColors.primaryLight),
+                            const Icon(
+                              Icons.account_balance_wallet_outlined,
+                              size: 20,
+                              color: AppColors.primaryLight,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 8,
-                          children: [
-                            _RevenuePocket(
-                              currency: 'RON',
-                              amount: data.monthlyRevenue['RON'] ?? 0.0,
-                              locale: localeStr,
-                            ),
-                            _RevenuePocket(
-                              currency: 'EUR',
-                              amount: data.monthlyRevenue['EUR'] ?? 0.0,
-                              locale: localeStr,
-                            ),
-                            _RevenuePocket(
-                              currency: 'USD',
-                              amount: data.monthlyRevenue['USD'] ?? 0.0,
-                              locale: localeStr,
-                            ),
-                          ],
+                        _RevenuePocket(
+                          currency: selectedCurrency,
+                          amount: data.monthlyRevenue[selectedCurrency] ?? 0.0,
+                          locale: localeStr,
                         ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Quick Navigation Actions
+                Text(
+                  l10n.commonActions,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                GridView.count(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _DashboardActionCard(
+                      label: l10n.bikeAdd,
+                      icon: Icons.add,
+                      onTap: () => context.push('/bikes/add'),
+                    ),
+                    _DashboardActionCard(
+                      label: l10n.rentalCreate,
+                      icon: Icons.note_add_outlined,
+                      isPrimary: true,
+                      onTap: () => context.push('/rentals/create'),
+                    ),
+                    _DashboardActionCard(
+                      label: l10n.paymentRecord,
+                      icon: Icons.payment,
+                      onTap: () => context.push('/payments/record'),
+                    ),
+                    _DashboardActionCard(
+                      label: l10n.serviceLog,
+                      icon: Icons.build_outlined,
+                      onTap: () => context.push('/servicing/log'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
 
                 // Grid of KPI Metrics
                 GridView.count(
@@ -216,62 +261,19 @@ class DashboardScreen extends ConsumerWidget {
                       title: l10n.kpiOverdueRent,
                       value: '${data.overdueCharges}',
                       icon: Icons.warning_amber_rounded,
-                      accentColor: data.overdueCharges > 0 ? AppColors.danger : AppColors.neutral,
+                      accentColor: data.overdueCharges > 0
+                          ? AppColors.danger
+                          : AppColors.neutral,
                       onTap: () => context.go('/rentals'),
                     ),
                     KpiCard(
                       title: l10n.kpiLowStockAlerts,
                       value: '${data.lowStockParts}',
                       icon: Icons.inventory_2_outlined,
-                      accentColor: data.lowStockParts > 0 ? AppColors.warning : AppColors.neutral,
+                      accentColor: data.lowStockParts > 0
+                          ? AppColors.warning
+                          : AppColors.neutral,
                       onTap: () => context.push('/inventory'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Quick Navigation Actions
-                Text(
-                  l10n.commonActions,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => context.push('/bikes/add'),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: Text(l10n.bikeAdd),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => context.push('/rentals/create'),
-                        icon: const Icon(Icons.note_add_outlined, size: 18),
-                        label: Text(l10n.rentalCreate),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => context.push('/payments/record'),
-                        icon: const Icon(Icons.payment, size: 18),
-                        label: Text(l10n.paymentRecord),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => context.push('/servicing/log'),
-                        icon: const Icon(Icons.build_outlined, size: 18),
-                        label: Text(l10n.serviceLog),
-                      ),
                     ),
                   ],
                 ),
@@ -279,6 +281,62 @@ class DashboardScreen extends ConsumerWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _DashboardActionCard extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isPrimary;
+  final VoidCallback onTap;
+
+  const _DashboardActionCard({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.isPrimary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isPrimary
+        ? Theme.of(context).colorScheme.primary
+        : AppColors.primaryLight;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

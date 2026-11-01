@@ -6,6 +6,7 @@ import '../../../core/utils/date_formatter.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../models/payment_model.dart';
 import '../providers/payment_provider.dart';
 
@@ -47,8 +48,9 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
                   hintText: 'e.g. Bank transfer bounced, duplicate entry',
                 ),
                 maxLines: 2,
-                validator: (val) =>
-                    (val == null || val.trim().isEmpty) ? 'Reason is required' : null,
+                validator: (val) => (val == null || val.trim().isEmpty)
+                    ? 'Reason is required'
+                    : null,
               ),
             ],
           ),
@@ -88,6 +90,18 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final paymentState = ref.watch(paymentProvider);
+    final selectedCurrency = ref.watch(authProvider).currency;
+
+    if (_selectedCurrency == null && paymentState.filterCurrency == null) {
+      _selectedCurrency = selectedCurrency;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref
+              .read(paymentProvider.notifier)
+              .setFilter(currency: selectedCurrency, status: _selectedStatus);
+        }
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -153,7 +167,9 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
                   selected: _selectedStatus == 'CONFIRMED',
                   onSelected: (_) {
                     setState(() => _selectedStatus = 'CONFIRMED');
-                    ref.read(paymentProvider.notifier).setFilter(
+                    ref
+                        .read(paymentProvider.notifier)
+                        .setFilter(
                           currency: _selectedCurrency,
                           status: 'CONFIRMED',
                         );
@@ -165,7 +181,9 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
                   selected: _selectedStatus == 'REVERSED',
                   onSelected: (_) {
                     setState(() => _selectedStatus = 'REVERSED');
-                    ref.read(paymentProvider.notifier).setFilter(
+                    ref
+                        .read(paymentProvider.notifier)
+                        .setFilter(
                           currency: _selectedCurrency,
                           status: 'REVERSED',
                         );
@@ -180,25 +198,25 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
             child: paymentState.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : paymentState.payments.isEmpty
-                    ? const EmptyState(
-                        icon: Icons.payments_outlined,
-                        title: 'No Payments Recorded',
-                        subtitle: 'Log customer cash or bank receipts.',
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () =>
-                            ref.read(paymentProvider.notifier).loadPayments(),
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: paymentState.payments.length,
-                          separatorBuilder: (_, index) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final payment = paymentState.payments[index];
-                            return _buildPaymentCard(context, payment, l10n);
-                          },
-                        ),
-                      ),
+                ? const EmptyState(
+                    icon: Icons.payments_outlined,
+                    title: 'No Payments Recorded',
+                    subtitle: 'Log customer cash or bank receipts.',
+                  )
+                : RefreshIndicator(
+                    onRefresh: () =>
+                        ref.read(paymentProvider.notifier).loadPayments(),
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: paymentState.payments.length,
+                      separatorBuilder: (_, index) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final payment = paymentState.payments[index];
+                        return _buildPaymentCard(context, payment, l10n);
+                      },
+                    ),
+                  ),
           ),
         ],
       ),
@@ -206,7 +224,10 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
   }
 
   Widget _buildPaymentCard(
-      BuildContext context, Payment payment, AppLocalizations l10n) {
+    BuildContext context,
+    Payment payment,
+    AppLocalizations l10n,
+  ) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -226,14 +247,14 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
                 Text(
                   CurrencyFormatter.format(payment.amount, payment.currency),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: payment.isReversed
-                            ? Colors.grey
-                            : Theme.of(context).colorScheme.primary,
-                        decoration: payment.isReversed
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
+                    fontWeight: FontWeight.bold,
+                    color: payment.isReversed
+                        ? Colors.grey
+                        : Theme.of(context).colorScheme.primary,
+                    decoration: payment.isReversed
+                        ? TextDecoration.lineThrough
+                        : null,
+                  ),
                 ),
                 StatusBadge(status: payment.status),
               ],
@@ -259,8 +280,10 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blueGrey.withAlpha(30),
                     borderRadius: BorderRadius.circular(6),
@@ -268,7 +291,9 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
                   child: Text(
                     payment.paymentMethod,
                     style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.bold),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 if (payment.referenceNumber != null &&
@@ -285,10 +310,9 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
               const Divider(height: 20),
               Text(
                 'Allocated across ${payment.allocations.length} weekly charge(s):',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               for (final alloc in payment.allocations)
@@ -297,15 +321,18 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Week #${alloc.sequenceNumber}',
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                        'Week #${alloc.sequenceNumber}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                       Text(
                         CurrencyFormatter.format(
-                            alloc.allocatedAmount, payment.currency),
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(fontWeight: FontWeight.bold),
+                          alloc.allocatedAmount,
+                          payment.currency,
+                        ),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -326,9 +353,10 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
                     const Text(
                       'Reversed',
                       style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12),
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
                     if (payment.reversalReason != null)
                       Text(

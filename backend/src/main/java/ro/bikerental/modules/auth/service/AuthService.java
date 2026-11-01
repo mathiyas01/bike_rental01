@@ -108,4 +108,12 @@ public class AuthService {
                 return UserProfileDto.fromEntity(updated);
         }
 
+        @Transactional
+        public UserProfileDto updateCurrency(UUID userId, String preferredCurrency) {
+                AppUser user = userRepository.findById(userId)
+                                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+                user.setPreferredCurrency(preferredCurrency);
+                return UserProfileDto.fromEntity(userRepository.save(user));
+        }
+
 }

@@ -17,6 +17,7 @@ C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\Dev
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\dto\BootstrapOwnerRequest.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\dto\LoginRequest.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\dto\LoginResponse.java
+C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\dto\UpdateCurrencyRequest.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\dto\UpdateLanguageRequest.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\dto\UserProfileDto.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\auth\entity\AppUser.java

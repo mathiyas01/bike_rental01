@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api/api_endpoints.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_back_button.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -19,17 +20,25 @@ class RentalDetailScreen extends ConsumerWidget {
   Future<void> _generateNextCharge(BuildContext context, WidgetRef ref) async {
     final client = ref.read(apiClientProvider);
     try {
-      await client.dio.post('${ApiEndpoints.rentalCharges}/rental/$rentalId/generate-next');
+      await client.dio.post(
+        '${ApiEndpoints.rentalCharges}/rental/$rentalId/generate-next',
+      );
       ref.invalidate(rentalChargesProvider(rentalId));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Next weekly charge generated'), backgroundColor: AppColors.success),
+          const SnackBar(
+            content: Text('Next weekly charge generated'),
+            backgroundColor: AppColors.success,
+          ),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
     }
@@ -47,7 +56,9 @@ class RentalDetailScreen extends ConsumerWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Closing the contract will restore the motorbike to AVAILABLE status.'),
+              const Text(
+                'Closing the contract will restore the motorbike to AVAILABLE status.',
+              ),
               const SizedBox(height: 12),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -68,13 +79,21 @@ class RentalDetailScreen extends ConsumerWidget {
               ),
               TextField(
                 controller: notesController,
-                decoration: const InputDecoration(labelText: 'Closure notes / inspection summary'),
+                decoration: const InputDecoration(
+                  labelText: 'Closure notes / inspection summary',
+                ),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirm Close')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirm Close'),
+            ),
           ],
         ),
       ),
@@ -87,7 +106,9 @@ class RentalDetailScreen extends ConsumerWidget {
           '${ApiEndpoints.rentals}/$rentalId/close',
           data: {
             'closureDate': DateFormatter.formatDate(returnDate),
-            'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+            'notes': notesController.text.trim().isEmpty
+                ? null
+                : notesController.text.trim(),
           },
         );
         ref.invalidate(rentalDetailProvider(rentalId));
@@ -96,13 +117,19 @@ class RentalDetailScreen extends ConsumerWidget {
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Contract closed and bike returned to fleet'), backgroundColor: AppColors.success),
+            const SnackBar(
+              content: Text('Contract closed and bike returned to fleet'),
+              backgroundColor: AppColors.success,
+            ),
           );
         }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+            SnackBar(
+              content: Text(e.toString()),
+              backgroundColor: AppColors.danger,
+            ),
           );
         }
       }
@@ -117,6 +144,7 @@ class RentalDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: Text(l10n.rentalTitle),
         actions: [
           IconButton(
@@ -130,7 +158,12 @@ class RentalDetailScreen extends ConsumerWidget {
       ),
       body: rentalAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text(err.toString(), style: const TextStyle(color: AppColors.danger))),
+        error: (err, _) => Center(
+          child: Text(
+            err.toString(),
+            style: const TextStyle(color: AppColors.danger),
+          ),
+        ),
         data: (rental) {
           final isActive = rental.status == 'ACTIVE';
 
@@ -149,34 +182,63 @@ class RentalDetailScreen extends ConsumerWidget {
                         children: [
                           Text(
                             rental.bikeRegistrationNumber,
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                          StatusBadge(status: rental.status, label: rental.status),
+                          StatusBadge(
+                            status: rental.status,
+                            label: rental.status,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 6),
                       Text(
                         'Customer: ${rental.customerName}',
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       Text(
                         'Motorbike: ${rental.bikeMakeModel}',
-                        style: const TextStyle(fontSize: 13, color: AppColors.textDarkSecondary),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textDarkSecondary,
+                        ),
                       ),
                       const Divider(height: 20),
-                      _Row(label: l10n.rentalStartDate, value: DateFormatter.formatDate(rental.startDate)),
+                      _Row(
+                        label: l10n.rentalStartDate,
+                        value: DateFormatter.formatDate(rental.startDate),
+                      ),
                       _Row(
                         label: l10n.rentalWeeklyRate,
-                        value: CurrencyFormatter.format(rental.weeklyRate, rental.currency),
+                        value: CurrencyFormatter.format(
+                          rental.weeklyRate,
+                          rental.currency,
+                        ),
                       ),
                       _Row(
                         label: l10n.rentalDeposit,
-                        value: CurrencyFormatter.format(rental.depositAmount, rental.depositCurrency),
+                        value: CurrencyFormatter.format(
+                          rental.depositAmount,
+                          rental.depositCurrency,
+                        ),
                       ),
                       if (rental.actualClosedDate != null)
-                        _Row(label: l10n.rentalClosureDate, value: DateFormatter.formatDate(rental.actualClosedDate)),
+                        _Row(
+                          label: l10n.rentalClosureDate,
+                          value: DateFormatter.formatDate(
+                            rental.actualClosedDate,
+                          ),
+                        ),
                       if (rental.termsAndNotes != null)
-                        _Row(label: l10n.commonNotes, value: rental.termsAndNotes!),
+                        _Row(
+                          label: l10n.commonNotes,
+                          value: rental.termsAndNotes!,
+                        ),
                     ],
                   ),
                 ),
@@ -200,14 +262,18 @@ class RentalDetailScreen extends ConsumerWidget {
                         onPressed: () => _closeRental(context, ref),
                         icon: const Icon(Icons.check_circle_outline, size: 18),
                         label: Text(l10n.rentalClose),
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                        ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
-                  onPressed: () => context.push('/payments/record?rentalId=${rental.id}&customerId=${rental.customerId}'),
+                  onPressed: () => context.push(
+                    '/payments/record?rentalId=${rental.id}&customerId=${rental.customerId}',
+                  ),
                   icon: const Icon(Icons.payment),
                   label: Text(l10n.paymentRecord),
                 ),
@@ -217,12 +283,20 @@ class RentalDetailScreen extends ConsumerWidget {
               // Weekly Rent Charges Schedule
               Text(
                 l10n.rentalCharges,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
 
               chargesAsync.when(
-                loading: () => const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator())),
+                loading: () => const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
                 error: (e, _) => Text(e.toString()),
                 data: (charges) {
                   if (charges.isEmpty) {
@@ -238,14 +312,22 @@ class RentalDetailScreen extends ConsumerWidget {
                           child: Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.15),
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.15,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
                                   '#${charge.chargeSequence}',
-                                  style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primaryLight),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primaryLight,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -255,12 +337,18 @@ class RentalDetailScreen extends ConsumerWidget {
                                   children: [
                                     Text(
                                       '${DateFormatter.formatDate(charge.periodStartDate)} - ${DateFormatter.formatDate(charge.periodEndDate)}',
-                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       'Due: ${DateFormatter.formatDate(charge.dueDate)}  •  Paid: ${CurrencyFormatter.format(charge.paidAmount, charge.currency)}',
-                                      style: const TextStyle(fontSize: 11, color: AppColors.textDarkSecondary),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textDarkSecondary,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -269,11 +357,20 @@ class RentalDetailScreen extends ConsumerWidget {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    CurrencyFormatter.format(charge.amount, charge.currency),
-                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                                    CurrencyFormatter.format(
+                                      charge.amount,
+                                      charge.currency,
+                                    ),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
-                                  StatusBadge(status: charge.status, label: charge.status),
+                                  StatusBadge(
+                                    status: charge.status,
+                                    label: charge.status,
+                                  ),
                                 ],
                               ),
                             ],
@@ -305,8 +402,17 @@ class _Row extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.textDarkSecondary, fontSize: 13)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textDarkSecondary,
+              fontSize: 13,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
         ],
       ),
     );
