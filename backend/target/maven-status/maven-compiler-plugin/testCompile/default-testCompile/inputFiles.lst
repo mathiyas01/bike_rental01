@@ -1,0 +1,12 @@
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\auth\service\AuthServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\bike\controller\BikeControllerTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\bike\service\BikeServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\customer\controller\CustomerControllerIntegrationTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\customer\service\CustomerServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\inventory\service\PartServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\inventory\service\StockMovementServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\payment\service\PaymentServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\rental\service\RentalChargeServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\rental\service\RentalServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\modules\servicing\service\ServicingServiceTest.java
+C:\Users\thisa\Desktop\Bike\backend\src\test\java\ro\bikerental\SecurityIntegrationTest.java
