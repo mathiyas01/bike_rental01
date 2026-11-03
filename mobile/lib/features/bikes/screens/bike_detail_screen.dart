@@ -86,6 +86,16 @@ class BikeDetailScreen extends ConsumerWidget {
                         label: l10n.bikeRca,
                         value: DateFormatter.formatDate(bike.rcaExpiryDate),
                       ),
+                      _DetailRow(
+                        label: 'Service from',
+                        value: '${bike.serviceIntervalDays} days',
+                      ),
+                      _DetailRow(
+                        label: 'Next service',
+                        value: DateFormatter.formatDate(
+                          bike.nextServiceDueDate,
+                        ),
+                      ),
                       if (bike.notes != null)
                         _DetailRow(label: l10n.commonNotes, value: bike.notes!),
                     ],

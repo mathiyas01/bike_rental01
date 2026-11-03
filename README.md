@@ -34,7 +34,7 @@ A production-grade, full-stack Motorbike Rental Management System built for a mo
    - Audited payment reversals that cleanly restore outstanding charge debt.
 4. **Maintenance & Fleet Utilization Analytics:**
    - Service logging with automatic parts consumption and odometer synchronization.
-   - Next revision reminders by date or odometer threshold.
+   - Configurable service intervals, next revision reminders by date or odometer threshold, and an early-service action from each fleet card.
    - Individual motorbike Profitability (ROI) broken down by currency: `Total Rent Revenue - Maintenance Costs = Net Profit`.
 5. **GDPR Compliance & Regulatory Road Readiness:**
    - Soft-archiving of customers and motorbikes preserving complete financial and audit history.
@@ -62,10 +62,10 @@ CREATE DATABASE bike_rental_db;
 cd backend
 mvn.cmd spring-boot:run
 ```
-The REST API will start at `http://localhost:8080`.
-- Swagger / OpenAPI UI: `http://localhost:8080/swagger-ui.html`
+The REST API will start at `http://localhost:8081`.
+- Swagger / OpenAPI UI: `http://localhost:8081/swagger-ui.html`
 - Initial Admin Owner Account:
-  - **Email:** `owner@bikerental.ro`
+  - **Email:** `admin@bikerental.ro`
   - **Password:** `Admin123!`
 
 ### 3. Backend Test Suite
@@ -81,8 +81,39 @@ cd mobile
 flutter pub get
 flutter run
 ```
-- For Android Emulator: Automatically connects to `http://10.0.2.2:8080`.
-- For Windows / iOS / Web: Connects to `http://localhost:8080`.
+- For Android Emulator: Automatically connects to `http://10.0.2.2:8081`.
+- For Windows / iOS / Web: Connects to `http://localhost:8081`.
+- For a physical Android phone, connect the phone and computer to the same Wi-Fi,
+  find the computer's IPv4 address with `ipconfig`, then build with:
+  `flutter build apk --release --dart-define=API_BASE_URL=http://YOUR_COMPUTER_IP:8081`.
+
+### 6. Client APK with a Cloud Backend
+
+An APK cannot access a backend running on the developer's computer unless the
+computer is publicly reachable. For client testing, deploy the backend and
+PostgreSQL database to a cloud provider first.
+
+Configure these backend environment variables on the provider:
+
+```text
+SPRING_PROFILES_ACTIVE=dev
+SERVER_PORT=<provider-assigned-port>
+SPRING_DATASOURCE_URL=jdbc:postgresql://<database-host>:5432/<database-name>
+SPRING_DATASOURCE_USERNAME=<database-user>
+SPRING_DATASOURCE_PASSWORD=<database-password>
+JWT_SECRET=<long-random-secret>
+```
+
+Use the provider's public HTTPS URL to build the APK:
+
+```powershell
+cd mobile
+flutter build apk --release --dart-define=API_BASE_URL=https://<public-backend-domain>
+```
+
+Send `build\app\outputs\flutter-apk\app-release.apk` to the client. The client
+only needs internet access and does not need PostgreSQL, Java, Maven, or the
+backend installed locally.
 
 ### 5. Mobile App Test & Static Analysis
 ```powershell
@@ -102,4 +133,3 @@ Detailed architectural specifications and design documents are available in the 
 - [REST API Endpoint Contracts](file:///c:/Users/thisa/Desktop/Bike/docs/API_SPECIFICATION.md)
 - [Flutter Screen Navigation Plan](file:///c:/Users/thisa/Desktop/Bike/docs/FLUTTER_NAVIGATION_PLAN.md)
 - [Development Checklist](file:///c:/Users/thisa/Desktop/Bike/docs/DEVELOPMENT_CHECKLIST.md)
-

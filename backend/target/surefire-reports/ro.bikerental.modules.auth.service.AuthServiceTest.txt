@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: ro.bikerental.modules.auth.service.AuthServiceTest
 -------------------------------------------------------------------------------
-Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.305 s -- in ro.bikerental.modules.auth.service.AuthServiceTest
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.150 s -- in ro.bikerental.modules.auth.service.AuthServiceTest

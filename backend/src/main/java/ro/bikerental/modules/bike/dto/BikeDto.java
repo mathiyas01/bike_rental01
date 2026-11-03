@@ -19,6 +19,8 @@ public class BikeDto {
     private LocalDate itpExpiryDate;
     private LocalDate rcaExpiryDate;
     private LocalDate cascoExpiryDate;
+    private int serviceIntervalDays;
+    private LocalDate nextServiceDueDate;
     private BikeStatus status;
     private String notes;
     private boolean archived;
@@ -39,6 +41,8 @@ public class BikeDto {
         dto.setItpExpiryDate(bike.getItpExpiryDate());
         dto.setRcaExpiryDate(bike.getRcaExpiryDate());
         dto.setCascoExpiryDate(bike.getCascoExpiryDate());
+        dto.setServiceIntervalDays(bike.getServiceIntervalDays());
+        dto.setNextServiceDueDate(bike.getNextServiceDueDate());
         dto.setStatus(bike.getStatus());
         dto.setNotes(bike.getNotes());
         dto.setArchived(bike.isArchived());
@@ -76,6 +80,12 @@ public class BikeDto {
 
     public LocalDate getCascoExpiryDate() { return cascoExpiryDate; }
     public void setCascoExpiryDate(LocalDate cascoExpiryDate) { this.cascoExpiryDate = cascoExpiryDate; }
+
+    public int getServiceIntervalDays() { return serviceIntervalDays; }
+    public void setServiceIntervalDays(int serviceIntervalDays) { this.serviceIntervalDays = serviceIntervalDays; }
+
+    public LocalDate getNextServiceDueDate() { return nextServiceDueDate; }
+    public void setNextServiceDueDate(LocalDate nextServiceDueDate) { this.nextServiceDueDate = nextServiceDueDate; }
 
     public BikeStatus getStatus() { return status; }
     public void setStatus(BikeStatus status) { this.status = status; }

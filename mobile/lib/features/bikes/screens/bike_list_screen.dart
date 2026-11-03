@@ -231,6 +231,35 @@ class BikeListScreen extends ConsumerWidget {
                                       ),
                                   ],
                                 ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.schedule_outlined,
+                                      size: 16,
+                                      color: AppColors.textDarkSecondary,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Next service: ${bike.nextServiceDueDate != null ? DateFormatter.formatDate(bike.nextServiceDueDate) : 'Not serviced yet'}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textDarkSecondary,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    TextButton.icon(
+                                      onPressed: () => context.push(
+                                        '/servicing/log?bikeId=${bike.id}',
+                                      ),
+                                      icon: const Icon(
+                                        Icons.build_outlined,
+                                        size: 16,
+                                      ),
+                                      label: const Text('Add to service'),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           ),

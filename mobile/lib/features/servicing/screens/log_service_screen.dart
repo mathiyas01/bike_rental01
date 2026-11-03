@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../bikes/providers/bike_provider.dart';
+import '../../inventory/models/part_model.dart';
+import '../../inventory/providers/inventory_provider.dart';
 import '../providers/service_provider.dart';
 
 class LogServiceScreen extends ConsumerStatefulWidget {
@@ -29,7 +31,118 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
   DateTime? _nextDueDate;
   final _nextDueOdometerController = TextEditingController();
   final _notesController = TextEditingController();
+  final Map<String, double> _partQuantities = {};
   bool _isSubmitting = false;
+
+  void _setDefaultNextDue(List bikes) {
+    if (_selectedBikeId == null) return;
+    final bike = bikes.cast<dynamic>().firstWhere(
+      (element) => element.id == _selectedBikeId,
+      orElse: () => null,
+    );
+    if (bike != null) {
+      _nextDueDate = _serviceDate.add(Duration(days: bike.serviceIntervalDays));
+    }
+  }
+
+  Future<void> _showAddPartsDialog(List<Part> availableParts) async {
+    final selectableParts = availableParts
+        .where((part) => !_partQuantities.containsKey(part.id))
+        .toList();
+    if (selectableParts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No additional parts are available in stock'),
+        ),
+      );
+      return;
+    }
+
+    Part selectedPart = selectableParts.first;
+    final quantityController = TextEditingController(text: '1');
+    final formKey = GlobalKey<FormState>();
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add parts'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<Part>(
+                  initialValue: selectedPart,
+                  decoration: const InputDecoration(labelText: 'Spare part'),
+                  items: selectableParts
+                      .map(
+                        (part) => DropdownMenuItem(
+                          value: part,
+                          child: Text(
+                            '${part.partCode} - ${part.name} '
+                            '(${part.currentQuantity} ${part.unitOfMeasure} available)',
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (part) {
+                    if (part != null) {
+                      setDialogState(() => selectedPart = part);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: quantityController,
+                  decoration: InputDecoration(
+                    labelText: 'Quantity (${selectedPart.unitOfMeasure})',
+                    helperText:
+                        'Available: ${selectedPart.currentQuantity} ${selectedPart.unitOfMeasure}',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (value) {
+                    final quantity = double.tryParse(value?.trim() ?? '');
+                    if (quantity == null || quantity <= 0) {
+                      return 'Enter a quantity greater than 0';
+                    }
+                    if (quantity > selectedPart.currentQuantity) {
+                      return 'Quantity exceeds available stock';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(
+                    dialogContext,
+                    double.parse(quantityController.text.trim()),
+                  );
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+    quantityController.dispose();
+
+    if (result != null && mounted) {
+      setState(() => _partQuantities[selectedPart.id] = result);
+    }
+  }
 
   @override
   void initState() {
@@ -71,15 +184,28 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
       if (_nextDueDate != null)
         'nextServiceDueDate': DateFormat('yyyy-MM-dd').format(_nextDueDate!),
       if (_nextDueOdometerController.text.trim().isNotEmpty)
-        'nextServiceDueOdometer':
-            double.parse(_nextDueOdometerController.text.trim()),
+        'nextServiceDueOdometer': double.parse(
+          _nextDueOdometerController.text.trim(),
+        ),
       if (_notesController.text.trim().isNotEmpty)
         'notes': _notesController.text.trim(),
-      'partsUsed': [],
+      'partsUsed': _partQuantities.entries.map((entry) {
+        final part = ref
+            .read(inventoryProvider)
+            .parts
+            .firstWhere((item) => item.id == entry.key);
+        return {
+          'partId': part.id,
+          'quantity': entry.value,
+          'unitCost': part.defaultUnitCost,
+          'currency': part.costCurrency,
+        };
+      }).toList(),
     };
 
-    final success =
-        await ref.read(serviceProvider.notifier).logService(payload);
+    final success = await ref
+        .read(serviceProvider.notifier)
+        .logService(payload);
 
     setState(() => _isSubmitting = false);
 
@@ -87,9 +213,11 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
       final l10n = AppLocalizations.of(context)!;
       if (success) {
         ref.invalidate(bikesListProvider);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.commonSuccess)),
-        );
+        await ref.read(inventoryProvider.notifier).loadParts();
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.commonSuccess)));
         context.pop();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -105,11 +233,13 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final bikes = ref.watch(bikesListProvider).valueOrNull ?? [];
+    final inventoryState = ref.watch(inventoryProvider);
+    final availableParts = inventoryState.parts
+        .where((part) => part.active && part.currentQuantity > 0)
+        .toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.serviceLog),
-      ),
+      appBar: AppBar(title: Text(l10n.serviceLog)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -127,15 +257,22 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
                 items: bikes.map((b) {
                   return DropdownMenuItem(
                     value: b.id,
-                    child: Text('${b.registrationNumber} (${b.make} ${b.model})'),
+                    child: Text(
+                      '${b.registrationNumber} (${b.make} ${b.model})',
+                    ),
                   );
                 }).toList(),
                 onChanged: (val) {
                   setState(() {
                     _selectedBikeId = val;
-                    final bike = bikes.firstWhere((element) => element.id == val);
-                    _odometerController.text =
-                        bike.currentOdometer.toStringAsFixed(0);
+                    final bike = bikes.firstWhere(
+                      (element) => element.id == val,
+                    );
+                    _odometerController.text = bike.currentOdometer
+                        .toStringAsFixed(0);
+                    _nextDueDate = _serviceDate.add(
+                      Duration(days: bike.serviceIntervalDays),
+                    );
                   });
                 },
                 validator: (val) =>
@@ -158,7 +295,10 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
                     lastDate: DateTime.now().add(const Duration(days: 30)),
                   );
                   if (picked != null) {
-                    setState(() => _serviceDate = picked);
+                    setState(() {
+                      _serviceDate = picked;
+                      _setDefaultNextDue(bikes);
+                    });
                   }
                 },
               ),
@@ -186,6 +326,53 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
               ),
               const SizedBox(height: 16),
 
+              // Parts used
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Add parts',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: inventoryState.isLoading
+                        ? null
+                        : () => _showAddPartsDialog(availableParts),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add parts'),
+                  ),
+                ],
+              ),
+              if (inventoryState.error != null)
+                Text(
+                  inventoryState.error!,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              if (_partQuantities.isNotEmpty)
+                ..._partQuantities.entries.map((entry) {
+                  final part = inventoryState.parts.firstWhere(
+                    (item) => item.id == entry.key,
+                  );
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.inventory_2_outlined),
+                    title: Text('${part.partCode} - ${part.name}'),
+                    subtitle: Text(
+                      '${entry.value} ${part.unitOfMeasure} '
+                      '(stock: ${part.currentQuantity} ${part.unitOfMeasure})',
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Remove part',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () =>
+                          setState(() => _partQuantities.remove(entry.key)),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 16),
+
               // Provider
               TextFormField(
                 controller: _providerController,
@@ -205,7 +392,8 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
                 controller: _workController,
                 decoration: InputDecoration(
                   labelText: l10n.serviceWork,
-                  hintText: 'e.g. 10,000 km revision, oil filter changed, chain adjusted',
+                  hintText:
+                      'e.g. 10,000 km revision, oil filter changed, chain adjusted',
                   prefixIcon: const Icon(Icons.build_circle_outlined),
                 ),
                 maxLines: 3,
@@ -227,7 +415,8 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
                         prefixIcon: const Icon(Icons.attach_money),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                        decimal: true,
+                      ),
                       validator: (val) {
                         if (val == null || val.trim().isEmpty) {
                           return 'Cost required';
@@ -266,15 +455,16 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.alarm_outlined),
                 title: Text(l10n.serviceNextDue),
-                subtitle: Text(_nextDueDate != null
-                    ? DateFormatter.formatDate(_nextDueDate)
-                    : 'Not specified'),
+                subtitle: Text(
+                  _nextDueDate != null
+                      ? DateFormatter.formatDate(_nextDueDate)
+                      : 'Not specified',
+                ),
                 trailing: TextButton(
                   onPressed: () async {
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate:
-                          DateTime.now().add(const Duration(days: 90)),
+                      initialDate: DateTime.now().add(const Duration(days: 90)),
                       firstDate: DateTime.now(),
                       lastDate: DateTime.now().add(const Duration(days: 730)),
                     );
@@ -328,7 +518,9 @@ class _LogServiceScreenState extends ConsumerState<LogServiceScreen> {
                     : Text(
                         l10n.serviceLog,
                         style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
             ],

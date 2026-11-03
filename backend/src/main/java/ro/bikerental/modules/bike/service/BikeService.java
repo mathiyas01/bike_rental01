@@ -51,6 +51,7 @@ public class BikeService {
                 request.getStatus() != null ? request.getStatus() : BikeStatus.AVAILABLE,
                 request.getNotes()
         );
+        bike.setServiceIntervalDays(request.getServiceIntervalDays());
 
         Bike saved = bikeRepository.save(bike);
         return BikeDto.fromEntity(saved);
@@ -80,6 +81,9 @@ public class BikeService {
         bike.setItpExpiryDate(request.getItpExpiryDate());
         bike.setRcaExpiryDate(request.getRcaExpiryDate());
         bike.setCascoExpiryDate(request.getCascoExpiryDate());
+        if (request.getServiceIntervalDays() != null) {
+            bike.setServiceIntervalDays(request.getServiceIntervalDays());
+        }
         if (request.getStatus() != null) {
             bike.setStatus(request.getStatus());
         }

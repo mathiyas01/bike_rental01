@@ -99,6 +99,10 @@ public class ServicingService {
             }
         }
 
+        LocalDate nextServiceDueDate = request.getNextServiceDueDate() != null
+                ? request.getNextServiceDueDate()
+                : request.getServiceDate().plusDays(bike.getServiceIntervalDays());
+
         ServiceRecord record = new ServiceRecord(
                 bike,
                 request.getServiceDate(),
@@ -108,7 +112,7 @@ public class ServicingService {
                 request.getLabourCost(),
                 request.getLabourCurrency(),
                 request.getStatus(),
-                request.getNextServiceDueDate(),
+                nextServiceDueDate,
                 request.getNextServiceDueOdometer(),
                 request.getNotes()
         );
@@ -155,8 +159,9 @@ public class ServicingService {
         // Update motorbike odometer
         if (request.getOdometerReading().compareTo(bike.getCurrentOdometer()) > 0) {
             bike.setCurrentOdometer(request.getOdometerReading());
-            bikeRepository.save(bike);
         }
+        bike.setNextServiceDueDate(nextServiceDueDate);
+        bikeRepository.save(bike);
 
         return ServiceRecordDto.fromEntity(savedRecord);
     }
@@ -191,4 +196,3 @@ public class ServicingService {
                 .collect(Collectors.toList());
     }
 }
-

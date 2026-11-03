@@ -9,6 +9,8 @@ class BikeModel {
   final DateTime? itpExpiryDate;
   final DateTime? rcaExpiryDate;
   final DateTime? cascoExpiryDate;
+  final int serviceIntervalDays;
+  final DateTime? nextServiceDueDate;
   final String status;
   final String? notes;
   final bool archived;
@@ -24,6 +26,8 @@ class BikeModel {
     this.itpExpiryDate,
     this.rcaExpiryDate,
     this.cascoExpiryDate,
+    required this.serviceIntervalDays,
+    this.nextServiceDueDate,
     required this.status,
     this.notes,
     required this.archived,
@@ -38,9 +42,19 @@ class BikeModel {
       model: json['model']?.toString() ?? '',
       yearOfManufacture: (json['yearOfManufacture'] as num?)?.toInt() ?? 2024,
       currentOdometer: (json['currentOdometer'] as num?)?.toDouble() ?? 0.0,
-      itpExpiryDate: json['itpExpiryDate'] != null ? DateTime.tryParse(json['itpExpiryDate'].toString()) : null,
-      rcaExpiryDate: json['rcaExpiryDate'] != null ? DateTime.tryParse(json['rcaExpiryDate'].toString()) : null,
-      cascoExpiryDate: json['cascoExpiryDate'] != null ? DateTime.tryParse(json['cascoExpiryDate'].toString()) : null,
+      itpExpiryDate: json['itpExpiryDate'] != null
+          ? DateTime.tryParse(json['itpExpiryDate'].toString())
+          : null,
+      rcaExpiryDate: json['rcaExpiryDate'] != null
+          ? DateTime.tryParse(json['rcaExpiryDate'].toString())
+          : null,
+      cascoExpiryDate: json['cascoExpiryDate'] != null
+          ? DateTime.tryParse(json['cascoExpiryDate'].toString())
+          : null,
+      serviceIntervalDays: (json['serviceIntervalDays'] as num?)?.toInt() ?? 30,
+      nextServiceDueDate: json['nextServiceDueDate'] != null
+          ? DateTime.tryParse(json['nextServiceDueDate'].toString())
+          : null,
       status: json['status']?.toString() ?? 'AVAILABLE',
       notes: json['notes']?.toString(),
       archived: json['archived'] == true,

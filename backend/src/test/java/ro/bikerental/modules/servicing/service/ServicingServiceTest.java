@@ -199,4 +199,39 @@ class ServicingServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("cannot be less than current motorbike odometer");
     }
+
+    @Test
+    @DisplayName("Should calculate and persist the next service date from the bike interval")
+    void logService_calculatesNextServiceDate() {
+        sampleBike.setServiceIntervalDays(45);
+        LogServiceRequest request = new LogServiceRequest(
+                sampleBike.getId(),
+                LocalDate.of(2026, 10, 22),
+                BigDecimal.valueOf(14000.0),
+                "Service",
+                "Periodic service",
+                BigDecimal.ZERO,
+                "RON",
+                ServiceStatus.COMPLETED,
+                null,
+                null,
+                null,
+                List.of()
+        );
+
+        when(bikeRepository.findById(sampleBike.getId())).thenReturn(Optional.of(sampleBike));
+        when(appUserRepository.findById(sampleUser.getId())).thenReturn(Optional.of(sampleUser));
+        when(serviceRecordRepository.save(any(ServiceRecord.class))).thenAnswer(i -> {
+            ServiceRecord record = i.getArgument(0);
+            record.setId(UUID.randomUUID());
+            return record;
+        });
+
+        ServiceRecordDto result = servicingService.logService(request, sampleUser.getId());
+
+        LocalDate expectedDueDate = LocalDate.of(2026, 12, 6);
+        assertThat(result.getNextServiceDueDate()).isEqualTo(expectedDueDate);
+        assertThat(sampleBike.getNextServiceDueDate()).isEqualTo(expectedDueDate);
+        verify(bikeRepository).save(sampleBike);
+    }
 }

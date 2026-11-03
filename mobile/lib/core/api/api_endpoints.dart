@@ -2,9 +2,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 class ApiEndpoints {
-  // Use 10.0.2.2 for Android emulator loopback to host localhost:8080
-  // Use localhost:8080 for Windows, Web, and iOS simulator
+  // Override for a physical device with:
+  // flutter build apk --release --dart-define=API_BASE_URL=http://192.168.x.x:8081
   static String get defaultBaseUrl {
+    const configuredUrl = String.fromEnvironment('API_BASE_URL');
+    if (configuredUrl.isNotEmpty) return configuredUrl;
     if (kIsWeb) return 'http://localhost:8081';
     try {
       if (Platform.isAndroid) return 'http://10.0.2.2:8081';

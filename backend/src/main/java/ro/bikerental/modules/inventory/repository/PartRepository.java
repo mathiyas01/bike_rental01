@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import ro.bikerental.modules.inventory.entity.Part;
@@ -25,12 +26,19 @@ public interface PartRepository extends JpaRepository<Part, UUID> {
            "ORDER BY p.currentQuantity ASC")
     List<Part> findLowStockParts();
 
-    @Query("SELECT p FROM Part p " +
-           "LEFT JOIN FETCH p.defaultSupplier s " +
+    @EntityGraph(attributePaths = "defaultSupplier")
+    @Query(value = "SELECT p FROM Part p " +
            "WHERE (:includeArchived = true OR p.active = true) " +
-           "AND (:category IS NULL OR LOWER(p.category) = LOWER(:category)) " +
+           "AND (COALESCE(:category, '') = '' OR LOWER(p.category) = LOWER(:category)) " +
            "AND (:lowStockOnly = false OR (p.active = true AND p.currentQuantity <= p.minReorderLevel)) " +
-           "AND (:search IS NULL OR LOWER(p.partCode) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "AND (COALESCE(:search, '') = '' OR LOWER(p.partCode) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "     OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "     OR LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%')))",
+           countQuery = "SELECT COUNT(p) FROM Part p " +
+           "WHERE (:includeArchived = true OR p.active = true) " +
+           "AND (COALESCE(:category, '') = '' OR LOWER(p.category) = LOWER(:category)) " +
+           "AND (:lowStockOnly = false OR (p.active = true AND p.currentQuantity <= p.minReorderLevel)) " +
+           "AND (COALESCE(:search, '') = '' OR LOWER(p.partCode) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "     OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "     OR LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<Part> searchParts(
@@ -41,4 +49,3 @@ public interface PartRepository extends JpaRepository<Part, UUID> {
             Pageable pageable
     );
 }
-

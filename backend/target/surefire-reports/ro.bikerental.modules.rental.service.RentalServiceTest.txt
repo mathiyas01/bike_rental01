@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: ro.bikerental.modules.rental.service.RentalServiceTest
 -------------------------------------------------------------------------------
-Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.040 s -- in ro.bikerental.modules.rental.service.RentalServiceTest
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.028 s -- in ro.bikerental.modules.rental.service.RentalServiceTest

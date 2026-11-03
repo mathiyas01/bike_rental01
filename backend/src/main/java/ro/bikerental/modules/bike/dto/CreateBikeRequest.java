@@ -39,6 +39,10 @@ public class CreateBikeRequest {
 
     private LocalDate cascoExpiryDate;
 
+    @NotNull(message = "Service interval is required")
+    @Min(value = 1, message = "Service interval must be at least 1 day")
+    private Integer serviceIntervalDays = 30;
+
     private BikeStatus status = BikeStatus.AVAILABLE;
 
     private String notes;
@@ -87,6 +91,9 @@ public class CreateBikeRequest {
 
     public LocalDate getCascoExpiryDate() { return cascoExpiryDate; }
     public void setCascoExpiryDate(LocalDate cascoExpiryDate) { this.cascoExpiryDate = cascoExpiryDate; }
+
+    public Integer getServiceIntervalDays() { return serviceIntervalDays; }
+    public void setServiceIntervalDays(Integer serviceIntervalDays) { this.serviceIntervalDays = serviceIntervalDays; }
 
     public BikeStatus getStatus() { return status; }
     public void setStatus(BikeStatus status) { this.status = status; }

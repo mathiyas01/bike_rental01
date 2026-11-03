@@ -27,6 +27,7 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
     text: DateTime.now().year.toString(),
   );
   final _odometerController = TextEditingController(text: '0.0');
+  final _serviceIntervalController = TextEditingController(text: '30');
   final _notesController = TextEditingController();
 
   DateTime? _itpExpiry;
@@ -42,6 +43,7 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
     _modelController.dispose();
     _yearController.dispose();
     _odometerController.dispose();
+    _serviceIntervalController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -74,6 +76,9 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
         'model': _modelController.text.trim(),
         'yearOfManufacture': int.parse(_yearController.text.trim()),
         'currentOdometer': double.parse(_odometerController.text.trim()),
+        'serviceIntervalDays': int.parse(
+          _serviceIntervalController.text.trim(),
+        ),
         'itpExpiryDate': _itpExpiry != null
             ? DateFormatter.formatDate(_itpExpiry)
             : null,
@@ -213,6 +218,23 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _serviceIntervalController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Service from (days) *',
+                  hintText: 'Number of days between services',
+                  prefixIcon: Icon(Icons.schedule_outlined),
+                ),
+                validator: (v) {
+                  final days = int.tryParse(v?.trim() ?? '');
+                  return days == null || days < 1
+                      ? 'Enter a positive number of days'
+                      : null;
+                },
               ),
               const SizedBox(height: 20),
 

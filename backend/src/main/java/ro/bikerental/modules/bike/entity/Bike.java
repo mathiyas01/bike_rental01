@@ -41,6 +41,12 @@ public class Bike {
     @Column(name = "casco_expiry_date")
     private LocalDate cascoExpiryDate;
 
+    @Column(name = "service_interval_days", nullable = false)
+    private int serviceIntervalDays = 30;
+
+    @Column(name = "next_service_due_date")
+    private LocalDate nextServiceDueDate;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private BikeStatus status = BikeStatus.AVAILABLE;
@@ -113,6 +119,12 @@ public class Bike {
 
     public LocalDate getCascoExpiryDate() { return cascoExpiryDate; }
     public void setCascoExpiryDate(LocalDate cascoExpiryDate) { this.cascoExpiryDate = cascoExpiryDate; }
+
+    public int getServiceIntervalDays() { return serviceIntervalDays; }
+    public void setServiceIntervalDays(int serviceIntervalDays) { this.serviceIntervalDays = serviceIntervalDays; }
+
+    public LocalDate getNextServiceDueDate() { return nextServiceDueDate; }
+    public void setNextServiceDueDate(LocalDate nextServiceDueDate) { this.nextServiceDueDate = nextServiceDueDate; }
 
     public BikeStatus getStatus() { return status; }
     public void setStatus(BikeStatus status) { this.status = status; }
