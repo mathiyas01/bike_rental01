@@ -1,0 +1,12 @@
+ro\bikerental\modules\auth\service\AuthServiceTest.class
+ro\bikerental\modules\bike\controller\BikeControllerTest.class
+ro\bikerental\modules\customer\service\CustomerServiceTest.class
+ro\bikerental\modules\inventory\service\StockMovementServiceTest.class
+ro\bikerental\modules\servicing\service\ServicingServiceTest.class
+ro\bikerental\modules\rental\service\RentalChargeServiceTest.class
+ro\bikerental\modules\customer\controller\CustomerControllerIntegrationTest.class
+ro\bikerental\modules\bike\service\BikeServiceTest.class
+ro\bikerental\modules\rental\service\RentalServiceTest.class
+ro\bikerental\SecurityIntegrationTest.class
+ro\bikerental\modules\inventory\service\PartServiceTest.class
+ro\bikerental\modules\payment\service\PaymentServiceTest.class
