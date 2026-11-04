@@ -1,16 +1,17 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 class ApiEndpoints {
-  // Override for a physical device with:
-  // flutter build apk --release --dart-define=API_BASE_URL=http://192.168.x.x:8081
+  // Set this for a deployed build:
+  // flutter build apk --release --dart-define=API_BASE_URL=https://your-backend.example.com
   static String get defaultBaseUrl {
     const configuredUrl = String.fromEnvironment('API_BASE_URL');
     if (configuredUrl.isNotEmpty) return configuredUrl;
     if (kIsWeb) return 'http://localhost:8081';
-    try {
-      if (Platform.isAndroid) return 'http://10.0.2.2:8081';
-    } catch (_) {}
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      // 10.0.2.2 is reachable only from an Android emulator. A physical
+      // device must use the deployed URL (or a LAN IP) via API_BASE_URL.
+      return 'http://10.0.2.2:8081';
+    }
     return 'http://localhost:8081';
   }
 

@@ -111,6 +111,12 @@ cd mobile
 flutter build apk --release --dart-define=API_BASE_URL=https://<public-backend-domain>
 ```
 
+Replace `<public-backend-domain>` with the complete deployed backend URL, without
+a trailing slash. Do not omit `--dart-define`: Android emulators can use
+`10.0.2.2`, but a physical phone cannot reach that address. If the deployed
+service uses a provider-assigned port, use the public HTTPS URL exposed by the
+provider rather than the internal container port.
+
 Send `build\app\outputs\flutter-apk\app-release.apk` to the client. The client
 only needs internet access and does not need PostgreSQL, Java, Maven, or the
 backend installed locally.

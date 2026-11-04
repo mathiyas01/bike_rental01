@@ -9,11 +9,22 @@ import 'router.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    const ProviderScope(
-      child: MotoRentalApp(),
-    ),
-  );
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: const Color(0xFF0F172A),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'The app could not start.\n\n${details.exception}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ),
+      ),
+    );
+  };
+  runApp(const ProviderScope(child: MotoRentalApp()));
 }
 
 class MotoRentalApp extends ConsumerWidget {
