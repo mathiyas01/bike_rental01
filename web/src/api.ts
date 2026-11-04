@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+const apiBaseUrl =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD
+    ? 'https://bike-rental-62cf2.containers.snapdeploy.app'
+    : 'http://localhost:8081');
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8081',
+  baseURL: apiBaseUrl,
   headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
   timeout: 15000,
 });
