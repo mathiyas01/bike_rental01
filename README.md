@@ -117,6 +117,10 @@ a trailing slash. Do not omit `--dart-define`: Android emulators can use
 service uses a provider-assigned port, use the public HTTPS URL exposed by the
 provider rather than the internal container port.
 
+Release builds currently default to the SnapDeploy URL configured in
+`mobile/lib/core/api/api_endpoints.dart`, but passing `--dart-define` is still
+recommended when deploying to a different backend.
+
 Send `build\app\outputs\flutter-apk\app-release.apk` to the client. The client
 only needs internet access and does not need PostgreSQL, Java, Maven, or the
 backend installed locally.

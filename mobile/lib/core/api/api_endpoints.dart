@@ -1,11 +1,15 @@
 import 'package:flutter/foundation.dart';
 
 class ApiEndpoints {
+  static const String productionBaseUrl =
+      'https://bike-rental-62cf2.containers.snapdeploy.app';
+
   // Set this for a deployed build:
   // flutter build apk --release --dart-define=API_BASE_URL=https://your-backend.example.com
   static String get defaultBaseUrl {
     const configuredUrl = String.fromEnvironment('API_BASE_URL');
     if (configuredUrl.isNotEmpty) return configuredUrl;
+    if (kReleaseMode) return productionBaseUrl;
     if (kIsWeb) return 'http://localhost:8081';
     if (defaultTargetPlatform == TargetPlatform.android) {
       // 10.0.2.2 is reachable only from an Android emulator. A physical
