@@ -81,6 +81,7 @@ C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\d
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\dto\CreateRentalRequest.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\dto\RentalChargeDto.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\dto\RentalDto.java
+C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\dto\UpdateRentalRequest.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\entity\ChargeStatus.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\entity\Rental.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\entity\RentalCharge.java
@@ -92,6 +93,7 @@ C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\rental\s
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\report\controller\ReportController.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\report\dto\BikeRoiDto.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\report\dto\DashboardKpiDto.java
+C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\report\dto\DateRangeReportDto.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\report\dto\FleetUtilizationDto.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\report\service\ReportService.java
 C:\Users\thisa\Desktop\Bike\backend\src\main\java\ro\bikerental\modules\servicing\controller\ServicingController.java

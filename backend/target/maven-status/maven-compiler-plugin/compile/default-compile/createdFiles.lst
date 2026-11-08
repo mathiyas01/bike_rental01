@@ -45,6 +45,7 @@ ro\bikerental\modules\payment\dto\RecordPaymentRequest.class
 ro\bikerental\common\security\JwtTokenProvider.class
 ro\bikerental\common\exception\GlobalExceptionHandler.class
 ro\bikerental\common\security\SecurityConfig.class
+ro\bikerental\modules\rental\dto\UpdateRentalRequest.class
 ro\bikerental\modules\customer\dto\CreateCustomerRequest.class
 ro\bikerental\modules\rental\dto\RentalChargeDto.class
 ro\bikerental\common\security\JwtAuthenticationFilter.class
@@ -95,6 +96,7 @@ ro\bikerental\modules\rental\dto\CloseRentalRequest.class
 ro\bikerental\modules\payment\dto\PaymentDto.class
 ro\bikerental\modules\rental\service\RentalService.class
 ro\bikerental\common\currency\SupportedCurrency.class
+ro\bikerental\modules\report\dto\DateRangeReportDto.class
 ro\bikerental\modules\servicing\service\ServicingService.class
 ro\bikerental\modules\inventory\controller\SupplierController.class
 ro\bikerental\modules\payment\dto\PaymentAllocationDto.class
