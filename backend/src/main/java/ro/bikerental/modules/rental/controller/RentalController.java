@@ -13,6 +13,7 @@ import ro.bikerental.common.pagination.PageResponse;
 import ro.bikerental.modules.rental.dto.CloseRentalRequest;
 import ro.bikerental.modules.rental.dto.CreateRentalRequest;
 import ro.bikerental.modules.rental.dto.RentalDto;
+import ro.bikerental.modules.rental.dto.UpdateRentalRequest;
 import ro.bikerental.modules.rental.entity.RentalStatus;
 import ro.bikerental.modules.rental.service.RentalService;
 
@@ -42,6 +43,14 @@ public class RentalController {
             @PathVariable UUID id,
             @Valid @RequestBody CloseRentalRequest request) {
         return ResponseEntity.ok(rentalService.closeRental(id, request));
+    }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Update an active rental agreement")
+    public ResponseEntity<RentalDto> updateRental(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateRentalRequest request) {
+        return ResponseEntity.ok(rentalService.updateRental(id, request));
     }
 
     @GetMapping("/{id}")

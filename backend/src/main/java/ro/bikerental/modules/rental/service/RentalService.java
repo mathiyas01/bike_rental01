@@ -16,6 +16,7 @@ import ro.bikerental.modules.customer.repository.CustomerRepository;
 import ro.bikerental.modules.rental.dto.CloseRentalRequest;
 import ro.bikerental.modules.rental.dto.CreateRentalRequest;
 import ro.bikerental.modules.rental.dto.RentalDto;
+import ro.bikerental.modules.rental.dto.UpdateRentalRequest;
 import ro.bikerental.modules.rental.entity.Rental;
 import ro.bikerental.modules.rental.entity.RentalCharge;
 import ro.bikerental.modules.rental.entity.RentalStatus;
@@ -132,6 +133,49 @@ public class RentalService {
         }
 
         return RentalDto.fromEntity(closedRental);
+    }
+
+    @Transactional
+    public RentalDto updateRental(UUID rentalId, UpdateRentalRequest request) {
+        Rental rental = rentalRepository.findById(rentalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rental agreement", rentalId));
+        if (rental.getStatus() != RentalStatus.ACTIVE) {
+            throw new BusinessException("Only active rental agreements can be edited");
+        }
+        Bike updatedBike = rental.getBike();
+        if (!updatedBike.getId().equals(request.getMotorbikeId())) {
+            updatedBike = bikeRepository.findById(request.getMotorbikeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Motorbike", request.getMotorbikeId()));
+            if (updatedBike.isArchived()) {
+                throw new BusinessException("Cannot assign an archived motorbike");
+            }
+            if (updatedBike.getStatus() != BikeStatus.AVAILABLE
+                    || rentalRepository.existsByBikeIdAndStatus(updatedBike.getId(), RentalStatus.ACTIVE)) {
+                throw new ConflictException("Motorbike " + updatedBike.getRegistrationNumber()
+                        + " is not available for this rental");
+            }
+        }
+        if (request.getPlannedEndDate() != null && request.getPlannedEndDate().isBefore(request.getStartDate())) {
+            throw new BusinessException("Planned end date cannot be earlier than rental start date");
+        }
+        Bike previousBike = rental.getBike();
+        if (previousBike != updatedBike) {
+            previousBike.setStatus(BikeStatus.AVAILABLE);
+            bikeRepository.save(previousBike);
+            updatedBike.setStatus(BikeStatus.RENTED);
+            bikeRepository.save(updatedBike);
+            rental.setBike(updatedBike);
+        }
+        rental.setStartDate(request.getStartDate());
+        rental.setPlannedEndDate(request.getPlannedEndDate());
+        rental.setWeeklyRate(request.getWeeklyRate());
+        rental.setCurrency(request.getCurrency().toUpperCase().trim());
+        rental.setDepositAmount(request.getDepositAmount() != null ? request.getDepositAmount() : java.math.BigDecimal.ZERO);
+        rental.setDepositCurrency(request.getDepositCurrency() != null
+                ? request.getDepositCurrency().toUpperCase().trim()
+                : rental.getCurrency());
+        rental.setTermsAndNotes(request.getTermsAndNotes());
+        return RentalDto.fromEntity(rentalRepository.save(rental));
     }
 
     @Transactional(readOnly = true)

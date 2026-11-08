@@ -7,6 +7,9 @@ import ro.bikerental.modules.bike.entity.Bike;
 import ro.bikerental.modules.bike.entity.BikeStatus;
 import ro.bikerental.modules.bike.repository.BikeRepository;
 import ro.bikerental.modules.inventory.repository.PartRepository;
+import ro.bikerental.modules.inventory.entity.StockMovement;
+import ro.bikerental.modules.inventory.entity.StockMovementType;
+import ro.bikerental.modules.inventory.repository.StockMovementRepository;
 import ro.bikerental.modules.payment.repository.PaymentRepository;
 import ro.bikerental.modules.rental.entity.ChargeStatus;
 import ro.bikerental.modules.rental.entity.RentalStatus;
@@ -15,6 +18,8 @@ import ro.bikerental.modules.rental.repository.RentalRepository;
 import ro.bikerental.modules.report.dto.BikeRoiDto;
 import ro.bikerental.modules.report.dto.DashboardKpiDto;
 import ro.bikerental.modules.report.dto.FleetUtilizationDto;
+import ro.bikerental.modules.report.dto.DateRangeReportDto;
+import ro.bikerental.modules.payment.entity.PaymentStatus;
 import ro.bikerental.modules.servicing.entity.ServicePartUsage;
 import ro.bikerental.modules.servicing.entity.ServiceRecord;
 import ro.bikerental.modules.servicing.repository.ServiceRecordRepository;
@@ -33,19 +38,22 @@ public class ReportService {
     private final PaymentRepository paymentRepository;
     private final PartRepository partRepository;
     private final ServiceRecordRepository serviceRecordRepository;
+    private final StockMovementRepository stockMovementRepository;
 
     public ReportService(BikeRepository bikeRepository,
                          RentalRepository rentalRepository,
                          RentalChargeRepository rentalChargeRepository,
                          PaymentRepository paymentRepository,
                          PartRepository partRepository,
-                         ServiceRecordRepository serviceRecordRepository) {
+                         ServiceRecordRepository serviceRecordRepository,
+                         StockMovementRepository stockMovementRepository) {
         this.bikeRepository = bikeRepository;
         this.rentalRepository = rentalRepository;
         this.rentalChargeRepository = rentalChargeRepository;
         this.paymentRepository = paymentRepository;
         this.partRepository = partRepository;
         this.serviceRecordRepository = serviceRecordRepository;
+        this.stockMovementRepository = stockMovementRepository;
     }
 
     @Transactional(readOnly = true)
@@ -141,5 +149,67 @@ public class ReportService {
         }
 
         return dto;
+    }
+
+    @Transactional(readOnly = true)
+    public DateRangeReportDto getDateRangeReport(LocalDate fromDate, LocalDate toDate) {
+        if (fromDate.isAfter(toDate)) {
+            throw new IllegalArgumentException("fromDate cannot be after toDate");
+        }
+        DateRangeReportDto dto = new DateRangeReportDto();
+        rentalRepository.findAll().stream()
+                .filter(r -> isInRange(r.getStartDate(), fromDate, toDate))
+                .forEach(r -> {
+                    dto.setTotalRentals(dto.getTotalRentals() + 1);
+                    if (r.getStatus() == RentalStatus.ACTIVE) dto.setActiveRentals(dto.getActiveRentals() + 1);
+                    if (r.getStatus() == RentalStatus.CLOSED) dto.setClosedRentals(dto.getClosedRentals() + 1);
+                });
+        paymentRepository.findAll().stream()
+                .filter(p -> p.getStatus() == PaymentStatus.CONFIRMED)
+                .filter(p -> isInRange(p.getPaymentDate(), fromDate, toDate))
+                .forEach(p -> add(dto.getRevenue(), p.getCurrency(), safe(p.getAmount())));
+        serviceRecordRepository.findAll().stream()
+                .filter(s -> isInRange(s.getServiceDate(), fromDate, toDate))
+                .forEach(s -> {
+                    dto.setServiceCount(dto.getServiceCount() + 1);
+                    add(dto.getLabourCost(), s.getLabourCurrency(), safe(s.getLabourCost()));
+                    s.getPartUsages().forEach(u -> add(dto.getSparePartsCost(), u.getCurrency(),
+                            safe(u.getQuantity()).multiply(safe(u.getUnitCost()))));
+                });
+        stockMovementRepository.findAll().stream()
+                .filter(m -> isInRange(toDate(m.getCreatedAt()), fromDate, toDate))
+                .forEach(m -> {
+                    BigDecimal quantity = safe(m.getQuantityDelta()).abs();
+                    BigDecimal cost = quantity.multiply(safe(m.getUnitCost()));
+                    if (m.getMovementType() == StockMovementType.STOCK_IN || m.getMovementType() == StockMovementType.RETURN) {
+                        add(dto.getStockInQuantity(), "TOTAL", quantity);
+                        add(dto.getStockInCost(), m.getCurrency(), cost);
+                    } else if (m.getMovementType() == StockMovementType.STOCK_OUT
+                            || m.getMovementType() == StockMovementType.SERVICE_USAGE) {
+                        add(dto.getStockOutQuantity(), "TOTAL", quantity);
+                        add(dto.getStockOutCost(), m.getCurrency(), cost);
+                    }
+                });
+        return dto;
+    }
+
+    private static boolean isInRange(LocalDate date, LocalDate from, LocalDate to) {
+        return date != null && !date.isBefore(from) && !date.isAfter(to);
+    }
+
+    private static void add(java.util.Map<String, BigDecimal> values, String key, BigDecimal amount) {
+        if (key == null || amount == null) return;
+        String normalizedKey = key.toUpperCase().trim();
+        if (values.containsKey(normalizedKey)) {
+            values.put(normalizedKey, values.get(normalizedKey).add(amount));
+        }
+    }
+
+    private static BigDecimal safe(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private static LocalDate toDate(java.time.Instant timestamp) {
+        return timestamp != null ? timestamp.atZone(java.time.ZoneOffset.UTC).toLocalDate() : null;
     }
 }

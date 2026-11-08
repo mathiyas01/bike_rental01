@@ -6,10 +6,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ro.bikerental.modules.report.dto.BikeRoiDto;
 import ro.bikerental.modules.report.dto.DashboardKpiDto;
+import ro.bikerental.modules.report.dto.DateRangeReportDto;
 import ro.bikerental.modules.report.dto.FleetUtilizationDto;
 import ro.bikerental.modules.report.service.ReportService;
 
 import java.util.UUID;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/v1/reports")
@@ -32,6 +34,14 @@ public class ReportController {
     @Operation(summary = "Get current fleet utilization metrics and breakdown")
     public ResponseEntity<FleetUtilizationDto> getFleetUtilization() {
         return ResponseEntity.ok(reportService.getFleetUtilization());
+    }
+
+    @GetMapping("/date-range")
+    @Operation(summary = "Get rental, revenue, service, and stock summary for a date range")
+    public ResponseEntity<DateRangeReportDto> getDateRangeReport(
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate) {
+        return ResponseEntity.ok(reportService.getDateRangeReport(fromDate, toDate));
     }
 
     @GetMapping("/bike-roi/{bikeId}")
