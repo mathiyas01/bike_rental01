@@ -143,3 +143,23 @@ Detailed architectural specifications and design documents are available in the 
 - [REST API Endpoint Contracts](file:///c:/Users/thisa/Desktop/Bike/docs/API_SPECIFICATION.md)
 - [Flutter Screen Navigation Plan](file:///c:/Users/thisa/Desktop/Bike/docs/FLUTTER_NAVIGATION_PLAN.md)
 - [Development Checklist](file:///c:/Users/thisa/Desktop/Bike/docs/DEVELOPMENT_CHECKLIST.md)
+
+### Firebase migration audit
+
+The Stage A audit for the planned Firebase backend migration is documented in:
+
+- [API compatibility matrix](./docs/firebase-migration/api-compatibility-matrix.md)
+- [Feature inventory](./docs/firebase-migration/feature-inventory.md)
+- [Firebase architecture](./docs/firebase-migration/firebase-architecture.md)
+- [Authentication migration plan](./docs/firebase-migration/authentication-migration-plan.md)
+- [Firestore data model](./docs/firebase-migration/firestore-data-model.md)
+- [Transaction design](./docs/firebase-migration/transaction-design.md)
+- [PostgreSQL migration plan](./docs/firebase-migration/postgresql-migration-plan.md)
+- [API compatibility strategy](./docs/firebase-migration/api-compatibility-strategy.md)
+- [Firebase cost analysis](./docs/firebase-migration/firebase-cost-analysis.md)
+- [Implementation roadmap](./docs/firebase-migration/implementation-roadmap.md)
+- [Stage B review and corrections](./docs/firebase-migration/stage-b-review-and-corrections.md)
+
+These documents describe the current Java API and application behavior. The
+existing Java backend remains the active implementation; no production
+migration or frontend switch has been performed.

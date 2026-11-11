@@ -1,0 +1,30 @@
+{
+  "source": "backend/src/main/java/ro/bikerental/modules/rental/controller/RentalController.java, RentalChargeController.java and DTO classes",
+  "routes": [
+    { "number": 21, "method": "POST", "path": "/api/v1/rentals", "status": 201, "response": "RentalDto" },
+    { "number": 22, "method": "POST", "path": "/api/v1/rentals/{id}/close", "status": 200, "response": "RentalDto" },
+    { "number": 23, "method": "PUT", "path": "/api/v1/rentals/{id}", "status": 200, "response": "RentalDto" },
+    { "number": 24, "method": "GET", "path": "/api/v1/rentals/{id}", "status": 200, "response": "RentalDto" },
+    { "number": 25, "method": "GET", "path": "/api/v1/rentals", "status": 200, "response": "PageResponse<RentalDto>" },
+    { "number": 26, "method": "POST", "path": "/api/v1/rental-charges/rental/{rentalId}/generate-next", "status": 201, "response": "RentalChargeDto" },
+    { "number": 27, "method": "POST", "path": "/api/v1/rental-charges/rental/{rentalId}/generate-up-to-date", "status": 201, "response": "RentalChargeDto[]" },
+    { "number": 28, "method": "GET", "path": "/api/v1/rental-charges/rental/{rentalId}", "status": 200, "response": "RentalChargeDto[]" },
+    { "number": 29, "method": "GET", "path": "/api/v1/rental-charges/due", "status": 200, "response": "RentalChargeDto[]" },
+    { "number": 30, "method": "GET", "path": "/api/v1/rental-charges", "status": 200, "response": "PageResponse<RentalChargeDto>" }
+  ],
+  "rentalDtoFields": [
+    "id", "customerId", "customerName", "customerPhone", "bikeId",
+    "bikeRegistrationNumber", "bikeMakeModel", "startDate", "plannedEndDate",
+    "actualClosedDate", "weeklyRate", "currency", "depositAmount",
+    "depositCurrency", "paymentFrequency", "scheduleAnchorDay", "status",
+    "termsAndNotes", "createdAt"
+  ],
+  "chargeDtoFields": [
+    "id", "rentalId", "chargeSequence", "periodStartDate", "periodEndDate",
+    "dueDate", "amount", "currency", "status", "paidAmount",
+    "remainingAmount", "notes", "createdAt"
+  ],
+  "pageFields": [
+    "content", "pageNumber", "pageSize", "totalElements", "totalPages", "last"
+  ]
+}
