@@ -573,3 +573,72 @@ Final validation completed:
 The C3.2 review does not itself accept Stage C3. Live Java differential
 execution, production JWT/BCrypt compatibility, and exhaustive production
 index behavior remain gated items for independent acceptance.
+
+## Stage C3.4 final acceptance gap closure
+
+Stage C3.4 addressed the three final gap closure tasks identified after Stage C3.3:
+1. Explicit authorization testing across all ten Stage C3 routes (21–30);
+2. Firestore index coverage and direction corrections;
+3. Java/Firebase differential testing feasibility and execution status.
+
+### 1. Explicit authorization test coverage
+
+A dedicated parameterized integration suite was added in
+[`tests/authorization.test.ts`](../../backend-firebase/tests/authorization.test.ts).
+All ten Stage C3 routes (21 through 30) were tested across seven discrete token/identity scenarios:
+
+1. **Missing token**: Request sent without `Authorization` header.
+   - Result: Rejected with HTTP `401 Unauthorized` (`UNAUTHORIZED`).
+2. **Malformed token**: Request sent with non-JWT / malformed Bearer header.
+   - Result: Rejected with HTTP `401 Unauthorized` (`UNAUTHORIZED`).
+3. **Invalid signature**: Request sent with a structurally valid JWT signed by an untrusted key.
+   - Result: Rejected with HTTP `401 Unauthorized` (`UNAUTHORIZED`).
+4. **Expired token**: Request sent with an expired JWT timestamp.
+   - Result: Rejected with HTTP `401 Unauthorized` (`UNAUTHORIZED`).
+5. **Revoked token**: Request sent with an outdated `authVersion` or issued prior to `tokenIssuedBefore`.
+   - Result: Rejected with HTTP `401 Unauthorized` (`UNAUTHORIZED`).
+6. **Valid authenticated non-owner**: Request sent by a valid, active user with `ROLE_CUSTOMER`.
+   - Result: Rejected with HTTP `403 Forbidden` (`FORBIDDEN`, `Access denied`).
+7. **Valid owner**: Request sent by a valid, active user with `ROLE_OWNER`.
+   - Result: Authorized and routed to handler with matching success status (`201` for creation/generation, `200` for closure/update/reads).
+
+**State isolation verification**: Document counts across all collections (`rentals`, `rental_charges`, `active_rental_locks`, `rental_charge_cursors`, `bikes`, `customers`, `app_users`, `unique_keys`, `payment_allocations`) were snapshot before and after every failed/unauthorized request. In every case, failed requests produced zero modifications to Firestore documents.
+
+### 2. Firestore index coverage and corrections
+
+Actual Firestore repository queries were audited and matched against `firestore.indexes.json`:
+
+1. **`chargeSequence` descending query direction**:
+   `RentalService.generateNext` queries `rental_charges` with `.where('rentalId', '==', rentalId).orderBy('chargeSequence', 'desc').limit(1)`. The index definition in `firestore.indexes.json` was updated to explicitly provide `{ "fieldPath": "chargeSequence", "order": "DESCENDING" }` alongside ascending order.
+2. **`customerId` filtering on `rental_charges`**:
+   `RentalRepository.pageCharges` allows filtering by `customerId`. Composite indexes incorporating `customerId` and `dueDate` (ASC/DESC) as well as combinations with `status` and `currency` were added to `firestore.indexes.json`.
+3. **Rentals sort combinations**:
+   Added `DESCENDING` `startDate` composite index variants for single-field filters (`status`, `customerId`, `bikeId`) and compound filters matching Java repository query shapes (`findAllByCustomerIdOrderByStartDateDesc`, `findAllByBikeIdOrderByStartDateDesc`).
+4. **Verification**:
+   An index verification suite in [`tests/indexes.test.ts`](../../backend-firebase/tests/indexes.test.ts) verified both JSON schema/matrix completeness and executed every supported filter and sort combination against the Firestore emulator without index errors.
+   - Local JSON validation: **VERIFIED**.
+   - Emulator query execution: **VERIFIED**.
+   - Deployed production Firestore indexes: **NOT DEPLOYED** (strictly preserved per safety restrictions).
+
+### 3. Java/Firebase differential testing status
+
+A feasibility assessment was performed to determine whether the existing Java backend could run locally without source code modifications:
+- **Local PostgreSQL**: Connection to `127.0.0.1:5432` failed (no local PostgreSQL daemon running).
+- **Docker daemon**: Docker is installed but the Docker daemon is not active (`open //./pipe/docker_engine: The system cannot find the file specified`).
+- **Neon production PostgreSQL**: Strictly prohibited by safety instructions ("Do not use Neon production credentials or production data").
+- **H2 in-memory test database**: The packaged `backend/target/bike-rental-backend-1.0.0-SNAPSHOT.jar` includes only `org.postgresql.Driver` and `flyway-database-postgresql`; `com.h2database:h2` is scoped to `test` dependencies and is not bundled into the executable JAR. Modifying `pom.xml` or Java source is prohibited by safety rules.
+- **Environment restrictions**: Sandboxed execution of external Maven tooling at `C:\apache-maven-3.9.12\bin\mvn.cmd` encountered system permission limitations.
+
+**Differential compatibility outcome**:
+Because a isolated local PostgreSQL database or runnable container was unavailable, live Java backend execution could not be performed without violating safety constraints or modifying source files. In strict accordance with the Stage C3.4 instructions:
+- Live runtime differential compatibility remains **NOT VERIFIED**.
+- Contractual conformance remains verified via the Java-derived contract fixture `tests/fixtures/c3-java-contract.json` and the TypeScript emulator test suite.
+
+### 4. Stage C3.4 validation results
+
+- `npm run typecheck`: PASS (0 errors)
+- `npm run build`: PASS (0 errors)
+- `npm test`: PASS (all unit, contract, and index matrix tests pass; emulator-dependent tests skip cleanly when emulator is offline)
+- `npm run test:emulator`: PASS (three consecutive runs from clean states, 9 suites, 0 failures)
+- `npm audit --omit=dev`: PASS (0 vulnerabilities found)
+- `git diff --check`: PASS (clean)

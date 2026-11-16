@@ -44,3 +44,9 @@ export class ConflictError extends AppError {
     super(409, 'CONFLICT', message);
   }
 }
+
+export class UnprocessableEntityError extends AppError {
+  constructor(message: string) {
+    super(422, 'UNPROCESSABLE_ENTITY', message);
+  }
+}

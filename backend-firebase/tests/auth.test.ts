@@ -48,7 +48,7 @@ async function emulatorIsReachable(host: string): Promise<boolean> {
       socket.destroy();
       resolve(reachable);
     };
-    socket.setTimeout(500, () => finish(false));
+    socket.setTimeout(5000, () => finish(false));
     socket.once('connect', () => finish(true));
     socket.once('error', () => finish(false));
   });

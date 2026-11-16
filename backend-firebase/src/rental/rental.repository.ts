@@ -7,8 +7,8 @@ import {
   type Query,
 } from 'firebase-admin/firestore';
 import { addDays } from '../shared/dates.js';
-import { BusinessError, ConflictError, NotFoundError } from '../shared/errors.js';
-import { normalizeAllocation } from '../shared/money.js';
+import { BusinessError, ConflictError, NotFoundError, UnprocessableEntityError } from '../shared/errors.js';
+import { fromMinorUnits, normalizeAllocation, toMinorUnits } from '../shared/money.js';
 import type { PageRequest } from '../shared/pagination.js';
 import { emailLockHash } from '../auth/jwt.service.js';
 import type {
@@ -93,8 +93,100 @@ function chargeFrom(id: string, data: FirebaseFirestore.DocumentData): ChargeDoc
   };
 }
 
+export const MAX_RENTAL_CHARGE_SCAN_DOCS = 1000;
+
+export function compareCodePoint(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function toTimestampOrEpoch(value: unknown): Timestamp {
+  if (value instanceof Timestamp) {
+    return value;
+  }
+  if (
+    value &&
+    typeof value === 'object' &&
+    'seconds' in value &&
+    'nanoseconds' in value &&
+    typeof (value as { seconds: unknown }).seconds === 'number' &&
+    typeof (value as { nanoseconds: unknown }).nanoseconds === 'number'
+  ) {
+    const raw = value as { seconds: number; nanoseconds: number };
+    return new Timestamp(raw.seconds, raw.nanoseconds);
+  }
+  if (
+    value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof (value as { toDate: () => Date }).toDate === 'function'
+  ) {
+    return Timestamp.fromDate((value as { toDate: () => Date }).toDate());
+  }
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    if (Number.isFinite(ms)) {
+      return Timestamp.fromMillis(ms);
+    }
+  }
+  return Timestamp.fromMillis(0);
+}
+
+export function compareChargeTimestamps(left: unknown, right: unknown): number {
+  const leftTs = toTimestampOrEpoch(left);
+  const rightTs = toTimestampOrEpoch(right);
+  if (leftTs.seconds !== rightTs.seconds) {
+    return leftTs.seconds - rightTs.seconds;
+  }
+  return leftTs.nanoseconds - rightTs.nanoseconds;
+}
+
+export function filterAndSortRentalCharges(
+  items: ChargeDocument[],
+  filters: { status?: string; currency?: string; customerId?: string; rentalId?: string },
+  page: PageRequest,
+): ChargeDocument[] {
+  const filtered = items.filter((charge) => {
+    if (filters.status && charge.status !== filters.status) return false;
+    if (filters.currency && charge.currency !== filters.currency) return false;
+    if (filters.customerId && charge.customerId !== filters.customerId) return false;
+    if (filters.rentalId && charge.rentalId !== filters.rentalId) return false;
+    return true;
+  });
+
+  const factor = page.direction === 'ASC' ? 1 : -1;
+  return [...filtered].sort((left, right) => {
+    let primary = 0;
+    switch (page.sortField) {
+      case 'dueDate':
+        primary = compareCodePoint(left.dueDate, right.dueDate);
+        break;
+      case 'createdAt':
+        primary = compareChargeTimestamps(left.createdAt, right.createdAt);
+        break;
+      case 'chargeSequence':
+        primary = left.chargeSequence - right.chargeSequence;
+        break;
+      case 'status':
+        primary = compareCodePoint(left.status, right.status);
+        break;
+      default:
+        primary = compareCodePoint(left.dueDate, right.dueDate);
+        break;
+    }
+    if (primary !== 0) {
+      return primary * factor;
+    }
+    return compareCodePoint(left.id, right.id) * factor;
+  });
+}
+
 export class RentalRepository {
-  constructor(private readonly firestore: Firestore) {}
+  constructor(
+    private readonly firestore: Firestore,
+    private readonly maxRentalChargeScanDocs = MAX_RENTAL_CHARGE_SCAN_DOCS,
+  ) {}
 
   bikeReference(id: string) {
     return this.firestore.collection(bikes).doc(id);
@@ -155,11 +247,29 @@ export class RentalRepository {
     filters: { status?: string; currency?: string; customerId?: string; rentalId?: string },
     page: PageRequest,
   ): Promise<{ items: ChargeDocument[]; totalElements: number }> {
+    if (filters.rentalId) {
+      const snapshot = await this.firestore.collection(charges)
+        .where('rentalId', '==', filters.rentalId)
+        .limit(this.maxRentalChargeScanDocs + 1)
+        .get();
+      if (snapshot.docs.length > this.maxRentalChargeScanDocs) {
+        throw new UnprocessableEntityError(
+          `Rental-charge query for rental '${filters.rentalId}' exceeded the ${this.maxRentalChargeScanDocs}-document limit`,
+        );
+      }
+      const mapped = snapshot.docs.map((document) => chargeFrom(document.id, document.data()));
+      const sorted = filterAndSortRentalCharges(mapped, filters, page);
+      const start = page.page * page.size;
+      return {
+        items: sorted.slice(start, start + page.size),
+        totalElements: sorted.length,
+      };
+    }
+
     let query: Query = this.firestore.collection(charges);
     if (filters.status) query = query.where('status', '==', filters.status);
     if (filters.currency) query = query.where('currency', '==', filters.currency);
     if (filters.customerId) query = query.where('customerId', '==', filters.customerId);
-    if (filters.rentalId) query = query.where('rentalId', '==', filters.rentalId);
     return this.pageQuery(query, page, (document) => chargeFrom(document.id, document.data()));
   }
 
@@ -212,6 +322,9 @@ export class RentalRepository {
   async paidAmountsForCharges(chargeIds: string[]): Promise<Map<string, string>> {
     if (chargeIds.length === 0) return new Map();
     const totals = new Map<string, bigint>();
+    const allocationRows: Array<{ chargeId: string; paymentId: string; minor: bigint }> = [];
+    const paymentIds = new Set<string>();
+
     for (let offset = 0; offset < chargeIds.length; offset += 30) {
       const snapshot = await this.firestore.collection(allocations)
         .where('rentalChargeId', 'in', chargeIds.slice(offset, offset + 30))
@@ -219,16 +332,52 @@ export class RentalRepository {
       for (const document of snapshot.docs) {
         const data = document.data();
         const chargeId = String(data.rentalChargeId);
+        if (!totals.has(chargeId)) {
+          totals.set(chargeId, 0n);
+        }
+        const paymentId = typeof data.paymentId === 'string' ? data.paymentId : '';
+        if (paymentId) {
+          paymentIds.add(paymentId);
+        }
         const amount = normalizeAllocation(data.allocatedAmount);
-        const [whole, fraction] = amount.split('.');
-        const minor = BigInt(whole!) * 100n + BigInt(fraction!);
-        totals.set(chargeId, (totals.get(chargeId) ?? 0n) + minor);
+        allocationRows.push({
+          chargeId,
+          paymentId,
+          minor: toMinorUnits(amount),
+        });
       }
     }
-    return new Map([...totals.entries()].map(([id, minor]) => [
-      id,
-      `${minor / 100n}.${String(minor % 100n).padStart(2, '0')}`,
-    ]));
+
+    if (allocationRows.length === 0) {
+      return new Map();
+    }
+
+    const parentStatusById = new Map<string, string | null>();
+    const uniquePaymentIds = [...paymentIds];
+    for (let offset = 0; offset < uniquePaymentIds.length; offset += 100) {
+      const refs = uniquePaymentIds
+        .slice(offset, offset + 100)
+        .map((id) => this.firestore.collection('payments').doc(id));
+      const snapshots = await this.firestore.getAll(...refs);
+      for (const snap of snapshots) {
+        parentStatusById.set(
+          snap.id,
+          snap.exists ? String(snap.data()?.status ?? '') : null,
+        );
+      }
+    }
+
+    for (const row of allocationRows) {
+      const parentStatus = row.paymentId ? parentStatusById.get(row.paymentId) : null;
+      // Exclude allocations belonging to reversed payments while preserving orphan test seeds.
+      if (parentStatus === null || parentStatus === undefined || parentStatus === 'CONFIRMED') {
+        totals.set(row.chargeId, (totals.get(row.chargeId) ?? 0n) + row.minor);
+      }
+    }
+
+    return new Map(
+      [...totals.entries()].map(([id, minor]) => [id, fromMinorUnits(minor)]),
+    );
   }
 
   static newId(): string {

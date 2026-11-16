@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { Timestamp } from 'firebase-admin/firestore';
 import { createApp } from '../src/app.js';
 import { parseEnvironment } from '../src/config/env.js';
 import { initializeFirebase } from '../src/config/firebase.js';
@@ -352,4 +353,80 @@ test('rental and charge workflows preserve Java behavior', async (context) => {
     { method: 'POST' },
   );
   assert.equal(afterClose.status, 400);
+
+  // Strategy 2A: rentalId-scoped pageCharges supports all filter/sort combos up to 1,000 docs and rejects >1,000 with 422
+  const bulkRentalId = randomUUID();
+  const bulkCustomerId = customerId;
+  const nowTs = Timestamp.now();
+  for (let batchStart = 1; batchStart <= 1000; batchStart += 500) {
+    const batch = firestore.batch();
+    for (let seq = batchStart; seq < batchStart + 500; seq += 1) {
+      batch.set(firestore.collection('rental_charges').doc(`${bulkRentalId}_${seq}`), {
+        rentalId: bulkRentalId,
+        customerId: bulkCustomerId,
+        bikeId,
+        chargeSequence: seq,
+        periodStartDate: '2026-01-01',
+        periodEndDate: '2026-01-07',
+        dueDate: seq === 1000 ? '2026-02-01' : '2026-01-01',
+        amount: '100.00',
+        currency: 'RON',
+        status: seq % 2 === 0 ? 'PAID' : 'UNPAID',
+        paidAmount: seq % 2 === 0 ? '100.00' : '0.00',
+        remainingAmount: seq % 2 === 0 ? '0.00' : '100.00',
+        notes: `Bulk ${seq}`,
+        createdAt: new Timestamp(1700000000, seq),
+        updatedAt: nowTs,
+      });
+    }
+    await batch.commit();
+  }
+
+  const exact1000Res = await request(
+    app,
+    `/api/v1/rental-charges?rentalId=${bulkRentalId}&status=PAID&currency=RON&customerId=${bulkCustomerId}&sort=chargeSequence,DESC&page=0&size=5`,
+    token,
+  );
+  assert.equal(exact1000Res.status, 200);
+  const exact1000Body = exact1000Res.body as Record<string, unknown>;
+  assert.equal(exact1000Body.totalElements, 500);
+  assert.deepEqual(
+    (exact1000Body.content as Array<Record<string, unknown>>).map((c) => c.chargeSequence),
+    [1000, 998, 996, 994, 992],
+  );
+
+  // Adding 1001st charge triggers explicit 422 overflow on rentalId-scoped pageCharges
+  await firestore.collection('rental_charges').doc(`${bulkRentalId}_1001`).set({
+    rentalId: bulkRentalId,
+    customerId: bulkCustomerId,
+    bikeId,
+    chargeSequence: 1001,
+    periodStartDate: '2026-01-01',
+    periodEndDate: '2026-01-07',
+    dueDate: '2026-01-01',
+    amount: '100.00',
+    currency: 'RON',
+    status: 'UNPAID',
+    paidAmount: '0.00',
+    remainingAmount: '100.00',
+    notes: 'Bulk 1001',
+    createdAt: new Timestamp(1700000000, 1001),
+    updatedAt: nowTs,
+  });
+
+  const overflowRes = await request(
+    app,
+    `/api/v1/rental-charges?rentalId=${bulkRentalId}&sort=createdAt,ASC`,
+    token,
+  );
+  assert.equal(overflowRes.status, 422);
+
+  // Without rentalId, existing unbounded pagination still succeeds cleanly across >1,000 charges
+  const nonRentalRes = await request(
+    app,
+    `/api/v1/rental-charges?status=UNPAID&currency=RON&customerId=${bulkCustomerId}&sort=dueDate,ASC&page=0&size=5`,
+    token,
+  );
+  assert.equal(nonRentalRes.status, 200);
+  assert.ok(Number((nonRentalRes.body as Record<string, unknown>).totalElements) > 500);
 });

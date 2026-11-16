@@ -70,8 +70,7 @@ export class JwtService {
         claims.role !== user.role ||
         typeof claims.iat !== 'number' ||
         typeof claims.exp !== 'number' ||
-        !user.isActive ||
-        user.role !== 'ROLE_OWNER') {
+        !user.isActive) {
       throw new AuthError(401, 'UNAUTHORIZED', 'Authentication required');
     }
 
