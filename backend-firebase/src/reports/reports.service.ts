@@ -1,12 +1,13 @@
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 import type {
   BikeDocument,
+  PaymentAllocationDocument,
   PaymentDocument,
   RentalDocument,
   ServiceRecordDocument,
   StockMovementDocument,
 } from '../domain/types.js';
-import { parseDate, todayUtc } from '../shared/dates.js';
+import { parseDate, todayBucharest } from '../shared/dates.js';
 import {
   minorToScale4Units,
   minorUnitsToJson,
@@ -262,13 +263,15 @@ export function computeDateRangeReportDto(params: {
 }
 
 /**
- * Computes BikeRoiDto matching Java ReportService.getBikeRoi (Stage C7.0.1 Decision 1):
- * includes all passed payments regardless of status and retains exact scale-4 subtraction
- * (`minorToScale4Units(revenueMinor) - maintenanceCostScale4`).
+ * Computes BikeRoiDto from confirmed direct rental payments (`rentalId !== null`)
+ * and confirmed customer-level (`rentalId === null`) payment allocations to the bike's charges,
+ * using exact integer minor / scale-4 fixed-point arithmetic without double-counting.
  */
 export function computeBikeRoiDto(params: {
   bike: Pick<BikeDocument, 'id' | 'registrationNumber' | 'make' | 'model'>;
   payments: ReadonlyArray<Pick<PaymentDocument, 'amount' | 'currency' | 'status'>>;
+  allocations?: ReadonlyArray<Pick<PaymentAllocationDocument, 'paymentId' | 'allocatedAmount' | 'currency'>>;
+  allocationParentPayments?: ReadonlyMap<string, Pick<PaymentDocument, 'status' | 'rentalId'>>;
   services: ReadonlyArray<Pick<ServiceRecordDocument, 'labourCost' | 'labourCurrency' | 'partsUsed'>>;
 }): BikeRoiDto {
   const revenueMinor = createCurrencyBigIntMap();
@@ -276,7 +279,18 @@ export function computeBikeRoiDto(params: {
   const netProfitScale4 = createCurrencyBigIntMap();
 
   for (const payment of params.payments) {
+    if (payment.status !== 'CONFIRMED') continue;
     addCurrencyUnits(revenueMinor, payment.currency, safeMinor(payment.amount));
+  }
+
+  if (params.allocations && params.allocationParentPayments) {
+    for (const alloc of params.allocations) {
+      const parent = params.allocationParentPayments.get(alloc.paymentId);
+      if (!parent) continue;
+      if (parent.status !== 'CONFIRMED') continue;
+      if (parent.rentalId !== null) continue;
+      addCurrencyUnits(revenueMinor, alloc.currency, safeMinor(alloc.allocatedAmount));
+    }
   }
 
   for (const service of params.services) {
@@ -315,8 +329,8 @@ export class ReportsService {
     this.repository = repository ?? new ReportsRepository(firestore);
   }
 
-  async getDashboardKpis(asOfDateOverride?: string): Promise<DashboardKpiDto> {
-    const today = asOfDateOverride ? parseDate(asOfDateOverride, 'asOfDate') : todayUtc();
+  async getDashboardKpis(asOfDateOverride?: string, referenceDate?: Date): Promise<DashboardKpiDto> {
+    const today = asOfDateOverride ? parseDate(asOfDateOverride, 'asOfDate') : todayBucharest(referenceDate);
     const startOfMonth = `${today.slice(0, 8)}01`;
 
     const [bikes, overdueChargesCount, lowStockPartsCount, monthlyConfirmedPayments] =
@@ -364,11 +378,26 @@ export class ReportsService {
   async getBikeRoi(rawBikeId: unknown): Promise<BikeRoiDto> {
     const bikeId = parseBikeRoiIdParam(rawBikeId);
     const bike = await this.repository.getBikeOrThrow(bikeId);
-    const [payments, services] = await Promise.all([
-      this.repository.listPaymentsForBikeRoiLiteralParity(bikeId),
+    const [rentalIds, chargeIds, services] = await Promise.all([
+      this.repository.listRentalIdsForBike(bikeId),
+      this.repository.listChargeIdsForBike(bikeId),
       this.repository.listServicesForBike(bikeId),
     ]);
 
-    return computeBikeRoiDto({ bike, payments, services });
+    const [payments, allocations] = await Promise.all([
+      this.repository.listDirectPaymentsForRentals(rentalIds),
+      this.repository.listAllocationsForCharges(chargeIds),
+    ]);
+
+    const uniqueParentPaymentIds = [...new Set(allocations.map((alloc) => alloc.paymentId))];
+    const allocationParentPayments = await this.repository.getPaymentsByIds(uniqueParentPaymentIds);
+
+    return computeBikeRoiDto({
+      bike,
+      payments,
+      allocations,
+      allocationParentPayments,
+      services,
+    });
   }
 }

@@ -3,6 +3,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 import type { AppConfig } from '../config/env.js';
 import { createCustomerController } from '../controllers/customer.controller.js';
 import { createAuthMiddleware } from '../middleware/auth.middleware.js';
+import { ownerMiddleware } from '../middleware/owner.middleware.js';
 import { PaymentService } from '../payment/payment.service.js';
 import { CustomerService } from '../reference/customer.service.js';
 
@@ -13,8 +14,8 @@ export function createCustomerRouter(firestore: Firestore, config: AppConfig): R
     new PaymentService(firestore, config),
   );
 
-  // Customer endpoints require authentication only (no ownerMiddleware), matching Java SecurityConfig.
-  router.use(createAuthMiddleware(firestore, config));
+  // Customer endpoints enforce ROLE_OWNER authorization (intentional security hardening over Java SecurityConfig).
+  router.use(createAuthMiddleware(firestore, config), ownerMiddleware);
 
   router.post('/', controller.createCustomer);
   router.get('/', controller.listCustomers);

@@ -259,21 +259,28 @@ test('Stage C8 authentication matrix across all 14 bike & customer routes (no ow
       }
     }
 
-    // ROLE_CUSTOMER is permitted on all 14 routes (Java SecurityConfig has no owner restriction).
-    const custBikeCreate = await request('/api/v1/bikes', 'POST', `Bearer ${customerToken}`, {
+    // Stage C8.4.3.1: ROLE_CUSTOMER receives 403 FORBIDDEN on all 14 operational bike & customer routes,
+    // while ROLE_OWNER succeeds across all 14 routes.
+    for (const target of unauthTargets) {
+      const denied = await request(target.path, target.method, `Bearer ${customerToken}`, target.body);
+      assert.equal(denied.status, 403, `Expected 403 FORBIDDEN for ROLE_CUSTOMER on ${target.method} ${target.path}`);
+      assert.equal(denied.body.error, 'FORBIDDEN');
+    }
+
+    const ownerBikeCreate = await request('/api/v1/bikes', 'POST', `Bearer ${ownerToken}`, {
       registrationNumber: 'B-02-ROLE',
       vin: 'VIN-ROLE-0002',
       make: 'Yamaha',
       model: 'MT-07',
       manufactureYear: 2024,
     });
-    assert.equal(custBikeCreate.status, 201);
-    const custBikeId = String(custBikeCreate.body.id);
+    assert.equal(ownerBikeCreate.status, 201);
+    const ownerBikeId = String(ownerBikeCreate.body.id);
 
-    assert.equal((await request('/api/v1/bikes', 'GET', `Bearer ${customerToken}`)).status, 200);
-    assert.equal((await request(`/api/v1/bikes/${custBikeId}`, 'GET', `Bearer ${customerToken}`)).status, 200);
+    assert.equal((await request('/api/v1/bikes', 'GET', `Bearer ${ownerToken}`)).status, 200);
+    assert.equal((await request(`/api/v1/bikes/${ownerBikeId}`, 'GET', `Bearer ${ownerToken}`)).status, 200);
     assert.equal(
-      (await request(`/api/v1/bikes/${custBikeId}`, 'PUT', `Bearer ${customerToken}`, {
+      (await request(`/api/v1/bikes/${ownerBikeId}`, 'PUT', `Bearer ${ownerToken}`, {
         registrationNumber: 'B-02-ROLE',
         vin: 'VIN-ROLE-0002',
         make: 'Yamaha',
@@ -284,34 +291,34 @@ test('Stage C8 authentication matrix across all 14 bike & customer routes (no ow
       200,
     );
     assert.equal(
-      (await request(`/api/v1/bikes/${custBikeId}/status`, 'PATCH', `Bearer ${customerToken}`, {
+      (await request(`/api/v1/bikes/${ownerBikeId}/status`, 'PATCH', `Bearer ${ownerToken}`, {
         status: 'IN_SERVICE',
       })).status,
       200,
     );
-    assert.equal((await request(`/api/v1/bikes/${custBikeId}/archive`, 'POST', `Bearer ${customerToken}`)).status, 200);
-    assert.equal((await request(`/api/v1/bikes/${custBikeId}/unarchive`, 'POST', `Bearer ${customerToken}`)).status, 200);
+    assert.equal((await request(`/api/v1/bikes/${ownerBikeId}/archive`, 'POST', `Bearer ${ownerToken}`)).status, 200);
+    assert.equal((await request(`/api/v1/bikes/${ownerBikeId}/unarchive`, 'POST', `Bearer ${ownerToken}`)).status, 200);
 
-    const custRecordCreate = await request('/api/v1/customers', 'POST', `Bearer ${customerToken}`, {
-      fullName: 'Role Allowed Customer',
+    const ownerCustCreate = await request('/api/v1/customers', 'POST', `Bearer ${ownerToken}`, {
+      fullName: 'Owner Allowed Customer',
       phone: '+40722222222',
     });
-    assert.equal(custRecordCreate.status, 201);
-    const custRecordId = String(custRecordCreate.body.id);
+    assert.equal(ownerCustCreate.status, 201);
+    const ownerCustId = String(ownerCustCreate.body.id);
 
-    assert.equal((await request('/api/v1/customers', 'GET', `Bearer ${customerToken}`)).status, 200);
-    assert.equal((await request(`/api/v1/customers/${custRecordId}`, 'GET', `Bearer ${customerToken}`)).status, 200);
+    assert.equal((await request('/api/v1/customers', 'GET', `Bearer ${ownerToken}`)).status, 200);
+    assert.equal((await request(`/api/v1/customers/${ownerCustId}`, 'GET', `Bearer ${ownerToken}`)).status, 200);
     assert.equal(
-      (await request(`/api/v1/customers/${custRecordId}`, 'PUT', `Bearer ${customerToken}`, {
-        fullName: 'Role Allowed Updated',
+      (await request(`/api/v1/customers/${ownerCustId}`, 'PUT', `Bearer ${ownerToken}`, {
+        fullName: 'Owner Allowed Updated',
         phone: '+40722222222',
       })).status,
       200,
     );
-    assert.equal((await request(`/api/v1/customers/${custRecordId}/archive`, 'POST', `Bearer ${customerToken}`)).status, 200);
-    assert.equal((await request(`/api/v1/customers/${custRecordId}/unarchive`, 'POST', `Bearer ${customerToken}`)).status, 200);
+    assert.equal((await request(`/api/v1/customers/${ownerCustId}/archive`, 'POST', `Bearer ${ownerToken}`)).status, 200);
+    assert.equal((await request(`/api/v1/customers/${ownerCustId}/unarchive`, 'POST', `Bearer ${ownerToken}`)).status, 200);
     assert.equal(
-      (await request(`/api/v1/customers/${custRecordId}/balance-summary`, 'GET', `Bearer ${customerToken}`)).status,
+      (await request(`/api/v1/customers/${ownerCustId}/balance-summary`, 'GET', `Bearer ${ownerToken}`)).status,
       200,
     );
   });

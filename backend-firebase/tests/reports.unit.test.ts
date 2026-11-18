@@ -387,31 +387,46 @@ test('Bike ROI calculation distinguishes literal Java parity from proposed renta
     },
   ];
 
-  // Case A: Under literal Java parity, payments passed to computeBikeRoiDto are only those where
-  // payment.rentalId === bikeId. Normal domain payments against rentalId != bikeId produce 0 revenue.
-  // (A future approved business-rule change would resolve rental.bikeId === bikeId and filter CONFIRMED.)
-  const normalDomainRoi = computeBikeRoiDto({
-    bike,
-    payments: [],
-    services,
-  });
-  assert.deepEqual(normalDomainRoi.totalRevenue, { RON: 0, EUR: 0, USD: 0 });
-  assert.deepEqual(normalDomainRoi.totalMaintenanceCost, { RON: 112.5625, EUR: 0, USD: 0 });
-  assert.deepEqual(normalDomainRoi.netProfit, { RON: -112.5625, EUR: 0, USD: 0 });
-
-  // Case B: When payments have rentalId === bikeId, Java includes BOTH CONFIRMED and REVERSED payments.
-  const literalParityRoi = computeBikeRoiDto({
+  // Case A: Direct rental payments exclude REVERSED and sum CONFIRMED per currency
+  const directRoi = computeBikeRoiDto({
     bike,
     payments: [
       { amount: '250.00', currency: 'RON', status: 'CONFIRMED' },
       { amount: '50.00', currency: 'RON', status: 'REVERSED' },
       { amount: '20.00', currency: 'EUR', status: 'CONFIRMED' },
+      { amount: '15.00', currency: 'USD', status: 'CONFIRMED' },
     ],
     services,
   });
-  assert.deepEqual(literalParityRoi.totalRevenue, { RON: 300, EUR: 20, USD: 0 });
-  assert.deepEqual(literalParityRoi.totalMaintenanceCost, { RON: 112.5625, EUR: 0, USD: 0 });
-  assert.deepEqual(literalParityRoi.netProfit, { RON: 187.4375, EUR: 20, USD: 0 });
+  assert.deepEqual(directRoi.totalRevenue, { RON: 250, EUR: 20, USD: 15 });
+  assert.deepEqual(directRoi.totalMaintenanceCost, { RON: 112.5625, EUR: 0, USD: 0 });
+  assert.deepEqual(directRoi.netProfit, { RON: 137.4375, EUR: 20, USD: 15 });
+
+  // Case B: Customer-level allocations (rentalId === null) count only CONFIRMED parents,
+  // skip allocations whose parent payment has rentalId !== null (preventing double-counting),
+  // and exclude REVERSED parents.
+  const combinedRoi = computeBikeRoiDto({
+    bike,
+    payments: [
+      { amount: '100.00', currency: 'RON', status: 'CONFIRMED' },
+    ],
+    allocations: [
+      { paymentId: 'cust-confirmed', allocatedAmount: '60.00', currency: 'RON' },
+      { paymentId: 'cust-reversed', allocatedAmount: '40.00', currency: 'RON' },
+      { paymentId: 'direct-with-alloc', allocatedAmount: '100.00', currency: 'RON' },
+      { paymentId: 'cust-eur', allocatedAmount: '30.50', currency: 'EUR' },
+    ],
+    allocationParentPayments: new Map([
+      ['cust-confirmed', { status: 'CONFIRMED', rentalId: null }],
+      ['cust-reversed', { status: 'REVERSED', rentalId: null }],
+      ['direct-with-alloc', { status: 'CONFIRMED', rentalId: 'r-1' }],
+      ['cust-eur', { status: 'CONFIRMED', rentalId: null }],
+    ]),
+    services,
+  });
+  assert.deepEqual(combinedRoi.totalRevenue, { RON: 160, EUR: 30.5, USD: 0 });
+  assert.deepEqual(combinedRoi.totalMaintenanceCost, { RON: 112.5625, EUR: 0, USD: 0 });
+  assert.deepEqual(combinedRoi.netProfit, { RON: 47.4375, EUR: 30.5, USD: 0 });
 });
 
 test('ReportsRepository enforces bounded scan limit (422 UnprocessableEntityError) and avoids unbounded reads', async () => {

@@ -6,6 +6,8 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { createApp } from '../src/app.js';
 import { parseEnvironment } from '../src/config/env.js';
 import { initializeFirebase } from '../src/config/firebase.js';
+import { RentalService } from '../src/rental/rental.service.js';
+import { addDays } from '../src/shared/dates.js';
 
 const config = parseEnvironment({
   NODE_ENV: 'test',
@@ -183,11 +185,24 @@ test('rental and charge workflows preserve Java behavior', async (context) => {
     depositAmount: 50,
     termsAndNotes: 'Contract',
   };
-  const invalidDates = await request(app, '/api/v1/rentals', token, {
+  // Java createRental allows plannedEndDate < startDate (validation applies only on updateRental)
+  const createWithEarlierPlannedEnd = await request(app, '/api/v1/rentals', token, {
     method: 'POST',
     body: JSON.stringify({ ...createBody, plannedEndDate: '2025-12-31' }),
   });
-  assert.equal(invalidDates.status, 400);
+  assert.equal(createWithEarlierPlannedEnd.status, 201);
+  const tempRentalId = String((createWithEarlierPlannedEnd.body as Record<string, unknown>).id);
+  assert.equal(
+    (await request(app, `/api/v1/rentals/${tempRentalId}/close`, token, {
+      method: 'POST',
+      body: JSON.stringify({ closureDate: '2026-01-01' }),
+    })).status,
+    200,
+  );
+  // Restore bike status/clean up temp charges so subsequent rental tests run from clean state
+  await firestore.collection('rental_charges').doc(`${tempRentalId}_1`).delete();
+  await firestore.collection('rental_charge_cursors').doc(tempRentalId).delete();
+  await firestore.collection('rentals').doc(tempRentalId).delete();
   const archivedCustomer = await request(app, '/api/v1/rentals', token, {
     method: 'POST',
     body: JSON.stringify({ ...createBody, customerId: archivedCustomerId }),
@@ -295,6 +310,13 @@ test('rental and charge workflows preserve Java behavior', async (context) => {
     body: JSON.stringify(updateBody),
   });
   assert.equal(missingLock.status, 409);
+
+  // Update validation must still reject plannedEndDate < startDate
+  const invalidUpdateDates = await request(app, `/api/v1/rentals/${rentalId}`, token, {
+    method: 'PUT',
+    body: JSON.stringify({ ...updateBody, plannedEndDate: '2026-01-01' }),
+  });
+  assert.equal(invalidUpdateDates.status, 400);
   assert.equal((await firestore.collection('rentals').doc(rentalId).get()).data()?.bikeId, bikeId);
   await firestore.collection('active_rental_locks').doc(bikeId).set({
     rentalId,
@@ -312,9 +334,16 @@ test('rental and charge workflows preserve Java behavior', async (context) => {
 
   const secondRentalResponse = await request(app, '/api/v1/rentals', token, {
     method: 'POST',
-    body: JSON.stringify({ ...createBody, motorbikeId: secondBikeId }),
+    body: JSON.stringify({
+      ...createBody,
+      motorbikeId: secondBikeId,
+      depositAmount: '',
+      depositCurrency: '',
+    }),
   });
   assert.equal(secondRentalResponse.status, 201);
+  assert.equal((secondRentalResponse.body as Record<string, unknown>).depositAmount, 0);
+  assert.equal((secondRentalResponse.body as Record<string, unknown>).depositCurrency, 'RON');
   const secondRentalId = String((secondRentalResponse.body as Record<string, unknown>).id);
   const updates = await Promise.all([
     request(app, `/api/v1/rentals/${rentalId}`, token, { method: 'PUT', body: JSON.stringify(updateBody) }),
@@ -429,4 +458,225 @@ test('rental and charge workflows preserve Java behavior', async (context) => {
   );
   assert.equal(nonRentalRes.status, 200);
   assert.ok(Number((nonRentalRes.body as Record<string, unknown>).totalElements) > 500);
+});
+
+test('Stage C8.4.4.1 atomic generateUpToDate handles batching, limits, concurrency, boundaries, and rollback', async (context) => {
+  if (!config.firestoreEmulatorHost || !(await reachable(config.firestoreEmulatorHost))) {
+    context.skip('FIRESTORE_EMULATOR_HOST not running');
+    return;
+  }
+
+  const firebase = initializeFirebase(config);
+  const firestore = firebase.firestore;
+  const app = createApp(config, firestore);
+
+  const bootstrap = await request(app, '/api/v1/auth/bootstrap-owner', undefined, {
+    method: 'POST',
+    body: JSON.stringify({
+      email: 'owner@example.com',
+      password: 'password123',
+      fullName: 'Owner',
+    }),
+  });
+  let token: string;
+  if (bootstrap.status === 201) {
+    token = String((bootstrap.body as Record<string, unknown>).accessToken);
+  } else {
+    const login = await request(app, '/api/v1/auth/login', undefined, {
+      method: 'POST',
+      body: JSON.stringify({ email: 'owner@example.com', password: 'password123' }),
+    });
+    assert.equal(login.status, 200);
+    token = String((login.body as Record<string, unknown>).accessToken);
+  }
+
+  const custRes = await request(app, '/api/v1/customers', token, {
+    method: 'POST',
+    body: JSON.stringify({ fullName: 'Atomic Customer', phone: '+40711000999' }),
+  });
+  assert.equal(custRes.status, 201);
+  const customerId = String((custRes.body as Record<string, unknown>).id);
+
+  async function createBikeAndRental(reg: string, startDate: string): Promise<string> {
+    const bikeRes = await request(app, '/api/v1/bikes', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        registrationNumber: reg,
+        vin: `VIN-${reg}`,
+        make: 'Honda',
+        model: 'CBR',
+        manufactureYear: 2024,
+        weeklyRate: 150,
+        currency: 'RON',
+      }),
+    });
+    assert.equal(bikeRes.status, 201);
+    const bikeId = String((bikeRes.body as Record<string, unknown>).id);
+    const rentalRes = await request(app, '/api/v1/rentals', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        customerId,
+        motorbikeId: bikeId,
+        startDate,
+        weeklyRate: 150,
+        currency: 'RON',
+        depositAmount: 300,
+        depositCurrency: 'RON',
+      }),
+    });
+    assert.equal(rentalRes.status, 201);
+    return String((rentalRes.body as Record<string, unknown>).id);
+  }
+
+  // 1. Multi-charge atomic generation + cursor verification + no-op retry
+  const multiRentalId = await createBikeAndRental('B-8441-MULTI', '2026-01-01');
+  // Initial charge #1 covers 2026-01-01..2026-01-07 (cursor at #2 / 2026-01-08).
+  // Target 2026-01-29 should generate charges #2 (01-08), #3 (01-15), #4 (01-22), #5 (01-29).
+  const multiRes = await request(
+    app,
+    `/api/v1/rental-charges/rental/${multiRentalId}/generate-up-to-date?targetDate=2026-01-29`,
+    token,
+    { method: 'POST' },
+  );
+  assert.equal(multiRes.status, 201);
+  const multiBody = multiRes.body as Array<Record<string, unknown>>;
+  assert.equal(multiBody.length, 4);
+  assert.deepEqual(multiBody.map((c) => c.chargeSequence), [2, 3, 4, 5]);
+  assert.deepEqual(multiBody.map((c) => c.periodStartDate), ['2026-01-08', '2026-01-15', '2026-01-22', '2026-01-29']);
+  assert.deepEqual(multiBody.map((c) => c.status), ['UNPAID', 'UNPAID', 'UNPAID', 'UNPAID']);
+
+  const multiCursor = await firestore.collection('rental_charge_cursors').doc(multiRentalId).get();
+  assert.equal(multiCursor.data()?.nextSequence, 6);
+  assert.equal(multiCursor.data()?.nextPeriodStart, '2026-02-05');
+
+  const noopRetry = await request(
+    app,
+    `/api/v1/rental-charges/rental/${multiRentalId}/generate-up-to-date?targetDate=2026-01-29`,
+    token,
+    { method: 'POST' },
+  );
+  assert.equal(noopRetry.status, 201);
+  assert.deepEqual(noopRetry.body, []);
+
+  // 2. Missing cursor fallback: deleting cursor resumes cleanly from highest chargeSequence without duplicates
+  await firestore.collection('rental_charge_cursors').doc(multiRentalId).delete();
+  const fallbackRes = await request(
+    app,
+    `/api/v1/rental-charges/rental/${multiRentalId}/generate-up-to-date?targetDate=2026-02-05`,
+    token,
+    { method: 'POST' },
+  );
+  assert.equal(fallbackRes.status, 201);
+  const fallbackBody = fallbackRes.body as Array<Record<string, unknown>>;
+  assert.equal(fallbackBody.length, 1);
+  assert.equal(fallbackBody[0]!.chargeSequence, 6);
+  const restoredCursor = await firestore.collection('rental_charge_cursors').doc(multiRentalId).get();
+  assert.equal(restoredCursor.data()?.nextSequence, 7);
+  assert.equal(restoredCursor.data()?.nextPeriodStart, '2026-02-12');
+
+  // 3. 500-charge rejection returns 409 with zero new writes and unchanged cursor;
+  //    exact 499-charge boundary succeeds in one transaction.
+  const boundaryRentalId = await createBikeAndRental('B-8441-BOUND', '2026-01-01');
+  // Charge #1 exists (2026-01-01), cursor is at #2 (2026-01-08).
+  // 500 new charges = 2026-01-08 + 499 * 7 days.
+  const targetFor500 = addDays('2026-01-08', 499 * 7);
+  const overLimitRes = await request(
+    app,
+    `/api/v1/rental-charges/rental/${boundaryRentalId}/generate-up-to-date?targetDate=${targetFor500}`,
+    token,
+    { method: 'POST' },
+  );
+  assert.equal(overLimitRes.status, 409);
+
+  const chargesAfter409 = await firestore.collection('rental_charges').where('rentalId', '==', boundaryRentalId).get();
+  assert.equal(chargesAfter409.size, 1);
+  const cursorAfter409 = await firestore.collection('rental_charge_cursors').doc(boundaryRentalId).get();
+  assert.equal(cursorAfter409.data()?.nextSequence, 2);
+  assert.equal(cursorAfter409.data()?.nextPeriodStart, '2026-01-08');
+
+  // 499 new charges = 2026-01-08 + 498 * 7 days -> sequences 2..500
+  const targetFor499 = addDays('2026-01-08', 498 * 7);
+  const exact499Res = await request(
+    app,
+    `/api/v1/rental-charges/rental/${boundaryRentalId}/generate-up-to-date?targetDate=${targetFor499}`,
+    token,
+    { method: 'POST' },
+  );
+  assert.equal(exact499Res.status, 201);
+  const exact499Body = exact499Res.body as Array<Record<string, unknown>>;
+  assert.equal(exact499Body.length, 499);
+  assert.equal(exact499Body[0]!.chargeSequence, 2);
+  assert.equal(exact499Body[498]!.chargeSequence, 500);
+  const cursorAfter499 = await firestore.collection('rental_charge_cursors').doc(boundaryRentalId).get();
+  assert.equal(cursorAfter499.data()?.nextSequence, 501);
+  assert.equal(cursorAfter499.data()?.nextPeriodStart, addDays('2026-01-08', 499 * 7));
+
+  // 4. Concurrent generateUpToDate calls cannot duplicate sequences
+  const concurrentRentalId = await createBikeAndRental('B-8441-CONC', '2026-01-01');
+  const [concA, concB] = await Promise.all([
+    request(app, `/api/v1/rental-charges/rental/${concurrentRentalId}/generate-up-to-date?targetDate=2026-01-22`, token, { method: 'POST' }),
+    request(app, `/api/v1/rental-charges/rental/${concurrentRentalId}/generate-up-to-date?targetDate=2026-01-22`, token, { method: 'POST' }),
+  ]);
+  assert.equal(concA.status, 201);
+  assert.equal(concB.status, 201);
+  const concTotalCreated = (concA.body as unknown[]).length + (concB.body as unknown[]).length;
+  assert.equal(concTotalCreated, 3); // sequences 2, 3, 4 created exactly once across both calls
+  const concCharges = await firestore.collection('rental_charges').where('rentalId', '==', concurrentRentalId).get();
+  assert.equal(concCharges.size, 4);
+
+  // 5. Closure boundary stops at actualClosedDate and cancellation returns 400 with 0 new writes
+  const closedRentalId = await createBikeAndRental('B-8441-CLOSE', '2026-01-01');
+  const closeRes = await request(app, `/api/v1/rentals/${closedRentalId}/close`, token, {
+    method: 'POST',
+    body: JSON.stringify({ closureDate: '2026-01-15' }),
+  });
+  assert.equal(closeRes.status, 200);
+  const closedGenRes = await request(
+    app,
+    `/api/v1/rental-charges/rental/${closedRentalId}/generate-up-to-date?targetDate=2026-02-01`,
+    token,
+    { method: 'POST' },
+  );
+  assert.equal(closedGenRes.status, 201);
+  const closedGenBody = closedGenRes.body as Array<Record<string, unknown>>;
+  assert.deepEqual(closedGenBody.map((c) => c.chargeSequence), [2, 3]); // 2026-01-08 and 2026-01-15 only
+
+  const cancelRentalId = await createBikeAndRental('B-8441-CANC', '2026-01-01');
+  await firestore.collection('rentals').doc(cancelRentalId).update({ status: 'CANCELLED' });
+  const cancelGenRes = await request(
+    app,
+    `/api/v1/rental-charges/rental/${cancelRentalId}/generate-up-to-date?targetDate=2026-01-22`,
+    token,
+    { method: 'POST' },
+  );
+  assert.equal(cancelGenRes.status, 400);
+  const cancelCharges = await firestore.collection('rental_charges').where('rentalId', '==', cancelRentalId).get();
+  assert.equal(cancelCharges.size, 1);
+
+  // 6. Transaction failure mid-flight rolls back all writes and leaves cursor unchanged
+  const rollbackRentalId = await createBikeAndRental('B-8441-ROLL', '2026-01-01');
+  const failingFirestore = new Proxy(firestore, {
+    get(target, prop, receiver) {
+      if (prop === 'runTransaction') {
+        return async <T>(updateFn: (tx: FirebaseFirestore.Transaction) => Promise<T>): Promise<T> => {
+          return target.runTransaction(async (tx) => {
+            await updateFn(tx);
+            throw new Error('Simulated mid-transaction failure');
+          });
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  const failingService = new RentalService(failingFirestore, config);
+  await assert.rejects(
+    () => failingService.generateUpToDate(rollbackRentalId, '2026-01-29'),
+    /Simulated mid-transaction failure/,
+  );
+  const rollbackCharges = await firestore.collection('rental_charges').where('rentalId', '==', rollbackRentalId).get();
+  assert.equal(rollbackCharges.size, 1);
+  const rollbackCursor = await firestore.collection('rental_charge_cursors').doc(rollbackRentalId).get();
+  assert.equal(rollbackCursor.data()?.nextSequence, 2);
+  assert.equal(rollbackCursor.data()?.nextPeriodStart, '2026-01-08');
 });

@@ -300,8 +300,8 @@ test('Stage C4 authentication matrix across all 7 payment routes (including ROLE
   assert.equal(seedPaymentRes.status, 201);
   const seededPaymentId = String((seedPaymentRes.body as Record<string, unknown>).id);
 
-  // Also create a second payment for ROLE_CUSTOMER reversal test
-  const secondPaymentRes = await sendRequest(app, '/api/v1/payments', 'POST', `Bearer ${customerToken}`, {
+  // Also create a second payment via ROLE_OWNER for reversal route check
+  const secondPaymentRes = await sendRequest(app, '/api/v1/payments', 'POST', `Bearer ${ownerToken}`, {
     customerId,
     rentalId,
     paymentDate: '2026-10-03',
@@ -309,10 +309,9 @@ test('Stage C4 authentication matrix across all 7 payment routes (including ROLE
     currency: 'RON',
     paymentMethod: 'BANK_TRANSFER',
   });
-  // ROLE_CUSTOMER is permitted on POST /api/v1/payments (never 403)
   assert.equal(secondPaymentRes.status, 201);
-  const customerCreatedPaymentId = String((secondPaymentRes.body as Record<string, unknown>).id);
-  assert.equal((secondPaymentRes.body as Record<string, unknown>).recordedByUserName, 'Customer User');
+  const ownerCreatedPaymentId = String((secondPaymentRes.body as Record<string, unknown>).id);
+  assert.equal((secondPaymentRes.body as Record<string, unknown>).recordedByUserName, 'Test Owner');
 
   const routeMatrix: Array<{
     name: string;
@@ -337,7 +336,7 @@ test('Stage C4 authentication matrix across all 7 payment routes (including ROLE
     {
       name: 'Route 32 POST /api/v1/payments/:id/reverse',
       method: 'POST',
-      path: `/api/v1/payments/${customerCreatedPaymentId}/reverse`,
+      path: `/api/v1/payments/${ownerCreatedPaymentId}/reverse`,
       body: { reason: 'Customer canceled transfer' },
       expectedSuccessStatus: 200,
     },
@@ -397,7 +396,7 @@ test('Stage C4 authentication matrix across all 7 payment routes (including ROLE
     const afterCounts = await snapshotCounts(firestore);
     assert.deepEqual(afterCounts, beforeCounts, `${route.name} failed auth must perform zero writes`);
 
-    // Valid ROLE_CUSTOMER token must reach handler without 403 on every route
+    // Stage C8.4.3.1: ROLE_CUSTOMER receives 403 FORBIDDEN with zero writes; ROLE_OWNER succeeds
     const custRes = await sendRequest(
       app,
       route.path,
@@ -407,8 +406,23 @@ test('Stage C4 authentication matrix across all 7 payment routes (including ROLE
     );
     assert.equal(
       custRes.status,
+      403,
+      `${route.name} must deny ROLE_CUSTOMER with 403`,
+    );
+    assert.equal((custRes.body as Record<string, unknown>).error, 'FORBIDDEN');
+    assert.deepEqual(await snapshotCounts(firestore), beforeCounts, `${route.name} 403 must perform zero writes`);
+
+    const ownerRes = await sendRequest(
+      app,
+      route.path,
+      route.method,
+      `Bearer ${ownerToken}`,
+      route.body,
+    );
+    assert.equal(
+      ownerRes.status,
       route.expectedSuccessStatus,
-      `${route.name} must allow authenticated ROLE_CUSTOMER`,
+      `${route.name} must allow authenticated ROLE_OWNER`,
     );
   }
 

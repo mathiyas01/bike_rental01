@@ -134,9 +134,11 @@ test('parseRecordPaymentInput validates currency, paymentMethod, and manualAlloc
   );
 });
 
-test('parseReversePaymentInput enforces 5..500 character reason', () => {
+test('parseReversePaymentInput enforces 5..500 character reason and accepts reversalReason alias', () => {
   assert.equal(parseReversePaymentInput({ reason: 'Customer bounced check' }).reason, 'Customer bounced check');
+  assert.equal(parseReversePaymentInput({ reversalReason: 'Flutter reversal alias' }).reason, 'Flutter reversal alias');
   assert.throws(() => parseReversePaymentInput({ reason: '    ' }), ValidationError);
+  assert.throws(() => parseReversePaymentInput({ reversalReason: 'abcd' }), ValidationError);
   assert.throws(() => parseReversePaymentInput({ reason: 'abcd' }), ValidationError);
   assert.throws(() => parseReversePaymentInput({ reason: 'a'.repeat(501) }), ValidationError);
 });

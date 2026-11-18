@@ -48,6 +48,16 @@ export const errorMiddleware: ErrorRequestHandler = (
     });
     return;
   }
+  if (error instanceof SyntaxError && 'status' in error && (error as { status?: number }).status === 400) {
+    response.status(400).json({
+      timestamp: new Date().toISOString(),
+      status: 400,
+      error: 'BAD_REQUEST',
+      message: 'Malformed JSON request body',
+      path: request.path,
+    } satisfies ErrorResponse);
+    return;
+  }
   const message = error instanceof Error ? error.message : 'Unexpected error';
   console.error(JSON.stringify({
     event: 'request_error',

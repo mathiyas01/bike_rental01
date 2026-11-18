@@ -7,6 +7,12 @@ response JSON, and status behavior. All paths include the `/api/v1` prefix.
 ## Contract conventions
 
 - `AUTH` means a valid Bearer JWT is required. `PUBLIC` is allowed anonymously.
+- **Stage C8.4.3.1 Authorization Policy (Intentional Security Hardening):**
+  - The reference Java backend (`SecurityConfig.java`) applies `.anyRequest().authenticated()` with no `@PreAuthorize` annotations, relying on only `ROLE_OWNER` accounts being provisioned.
+  - Firebase (`backend-firebase/`) intentionally enforces stricter **`ROLE_OWNER` authorization (`createAuthMiddleware` -> `ownerMiddleware`)** on all operational routes (**Routes 7–61**: Bikes, Customers, Rentals, Rental Charges, Payments, Parts, Stock Movements, Suppliers, Servicing, Reports) and on `POST /api/v1/auth/reset-password` (dev-only).
+  - Profile routes (`GET /api/v1/auth/profile`, `PATCH /api/v1/auth/profile/language`, `PATCH /api/v1/auth/profile/currency`) remain accessible to any authenticated user (`createAuthMiddleware` only).
+  - Public routes remain `POST /api/v1/auth/login` and `POST /api/v1/auth/bootstrap-owner`.
+  - Any future customer self-service feature must use dedicated customer-scoped endpoints that strictly enforce `customerId` ownership rather than exposing admin CRUD routes.
 - Successful validation failures use HTTP `400` and the structured
   `ErrorResponse` documented below.
 - Missing resources and business conflicts retain the Java service's

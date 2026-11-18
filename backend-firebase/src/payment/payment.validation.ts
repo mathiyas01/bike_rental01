@@ -220,7 +220,7 @@ export function parseReversePaymentInput(body: unknown): ReversePaymentInput {
     }]);
   }
   const data = body as Record<string, unknown>;
-  const reason = data.reason;
+  const reason = data.reason !== undefined ? data.reason : data.reversalReason;
   if (typeof reason !== 'string' || reason.trim().length === 0) {
     throw new ValidationError([{
       field: 'reason',

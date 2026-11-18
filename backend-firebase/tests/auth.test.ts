@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
+import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { Timestamp } from 'firebase-admin/firestore';
 import { createApp } from '../src/app.js';
 import { parseEnvironment } from '../src/config/env.js';
 import { initializeFirebase } from '../src/config/firebase.js';
@@ -31,7 +33,9 @@ async function request(
       ...init,
       headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
     });
-    return { status: response.status, body: await response.json() as Record<string, unknown> };
+    const text = await response.text();
+    const body = text ? JSON.parse(text) as Record<string, unknown> : {};
+    return { status: response.status, body };
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -65,9 +69,22 @@ test('authentication integration scenarios', async (context) => {
   await firestore.recursiveDelete(firestore.collection('unique_keys'));
   const app = createApp(config, firestore);
 
+  // Blank preferredLanguage must still fail with 400
+  const blankLangBootstrap = await request(app, '/api/v1/auth/bootstrap-owner', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: 'blank@example.com',
+      password: 'password123',
+      fullName: 'Owner',
+      preferredLanguage: '   ',
+    }),
+  });
+  assert.equal(blankLangBootstrap.status, 400);
+
+  // Explicit preferredLanguage: null defaults to 'en' matching Java BootstrapOwnerRequest
   const bootstrapRequest = (email: string) => request(app, '/api/v1/auth/bootstrap-owner', {
     method: 'POST',
-    body: JSON.stringify({ email, password: 'password123', fullName: 'Owner' }),
+    body: JSON.stringify({ email, password: 'password123', fullName: 'Owner', preferredLanguage: null }),
   });
   const bootstrapResults = await Promise.all([
     bootstrapRequest('owner@example.com'),
@@ -154,4 +171,72 @@ test('authentication integration scenarios', async (context) => {
   const userData = userSnapshot.docs[0]!.data();
   assert.match(String(userData.passwordHash), /^\$2[aby]\$\d\d\$/);
   assert.equal(await bcrypt.compare('password123', String(userData.passwordHash)), true);
+
+  // Stage C8.4.3.1: Profile endpoints allow any authenticated user (including ROLE_CUSTOMER),
+  // while /reset-password (when dev reset is enabled) remains ROLE_OWNER-only.
+  const customerUserId = randomUUID();
+  const customerEmail = 'customer-profile@example.com';
+  await firestore.collection('app_users').doc(customerUserId).set({
+    email: customerEmail,
+    emailNormalized: customerEmail,
+    passwordHash: String(userData.passwordHash),
+    fullName: 'Customer Profile User',
+    role: 'ROLE_CUSTOMER',
+    preferredLanguage: 'en',
+    preferredCurrency: 'RON',
+    isActive: true,
+    authVersion: 0,
+    createdAt: Timestamp.fromDate(new Date()),
+    updatedAt: Timestamp.fromDate(new Date()),
+  });
+  const customerToken = jwt.sign({
+    userId: customerUserId,
+    role: 'ROLE_CUSTOMER',
+    lang: 'en',
+    authVersion: 0,
+  }, config.jwtSecret, { subject: customerEmail, expiresIn: '1h' });
+
+  const custProfileRes = await request(app, '/api/v1/auth/profile', {
+    headers: { Authorization: `Bearer ${customerToken}` },
+  });
+  assert.equal(custProfileRes.status, 200);
+  assert.equal((custProfileRes.body as Record<string, unknown>).role, 'ROLE_CUSTOMER');
+
+  const custLangRes = await request(app, '/api/v1/auth/profile/language', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: JSON.stringify({ preferredLanguage: 'ro' }),
+  });
+  assert.equal(custLangRes.status, 200);
+  assert.equal((custLangRes.body as Record<string, unknown>).preferredLanguage, 'ro');
+
+  const custCurrencyRes = await request(app, '/api/v1/auth/profile/currency', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: JSON.stringify({ preferredCurrency: 'EUR' }),
+  });
+  assert.equal(custCurrencyRes.status, 200);
+  assert.equal((custCurrencyRes.body as Record<string, unknown>).preferredCurrency, 'EUR');
+
+  const devResetApp = createApp({ ...config, enableDevPasswordReset: true }, firestore);
+  const custResetForbidden = await request(devResetApp, '/api/v1/auth/reset-password', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${customerToken}` },
+    body: JSON.stringify({ email: customerEmail, password: 'newpassword123' }),
+  });
+  assert.equal(custResetForbidden.status, 403);
+  assert.equal((custResetForbidden.body as Record<string, unknown>).error, 'FORBIDDEN');
+
+  const ownerTokenForReset = jwt.sign({
+    userId: createdUser.id,
+    role: 'ROLE_OWNER',
+    lang: 'en',
+    authVersion: 1,
+  }, config.jwtSecret, { subject: loginEmail, expiresIn: '1h' });
+  const ownerResetOk = await request(devResetApp, '/api/v1/auth/reset-password', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${ownerTokenForReset}` },
+    body: JSON.stringify({ email: loginEmail, password: 'newpassword123' }),
+  });
+  assert.equal(ownerResetOk.status, 204);
 });

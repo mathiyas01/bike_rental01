@@ -115,6 +115,7 @@ export interface PartSearchFilters {
   category?: string;
   lowStockOnly: boolean;
   includeArchived: boolean;
+  active?: boolean;
 }
 
 export interface StockMovementSearchFilters {
@@ -127,6 +128,7 @@ export interface StockMovementSearchFilters {
 export interface SupplierSearchFilters {
   search?: string;
   includeArchived: boolean;
+  active?: boolean;
 }
 
 export interface ServicePartUsageInputItem {

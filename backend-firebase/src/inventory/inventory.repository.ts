@@ -244,6 +244,7 @@ function sortParts(items: PartDocument[], page: PageRequest): PartDocument[] {
       case 'createdAt':
         return compareTimestamps(left.createdAt, right.createdAt);
       case 'isActive':
+      case 'active':
         return Number(left.isActive) - Number(right.isActive);
       default:
         return left.partCode.localeCompare(right.partCode);
@@ -281,6 +282,7 @@ function sortSuppliers(items: SupplierDocument[], page: PageRequest): SupplierDo
       case 'createdAt':
         return compareTimestamps(left.createdAt, right.createdAt);
       case 'isActive':
+      case 'active':
         return Number(left.isActive) - Number(right.isActive);
       default:
         return left.name.localeCompare(right.name);
@@ -431,9 +433,14 @@ export class InventoryRepository {
     filters: PartSearchFilters,
     page: PageRequest,
   ): Promise<{ items: PartDocument[]; totalElements: number }> {
+    if (filters.lowStockOnly && filters.active === false) {
+      return { items: [], totalElements: 0 };
+    }
     let baseQuery: Query = this.firestore.collection(PARTS);
     if (filters.lowStockOnly) {
       baseQuery = baseQuery.where('isActive', '==', true).where('isLowStock', '==', true);
+    } else if (filters.active !== undefined) {
+      baseQuery = baseQuery.where('isActive', '==', filters.active);
     } else if (!filters.includeArchived) {
       baseQuery = baseQuery.where('isActive', '==', true);
     }
@@ -499,7 +506,9 @@ export class InventoryRepository {
     page: PageRequest,
   ): Promise<{ items: SupplierDocument[]; totalElements: number }> {
     let baseQuery: Query = this.firestore.collection(SUPPLIERS);
-    if (!filters.includeArchived) {
+    if (filters.active !== undefined) {
+      baseQuery = baseQuery.where('isActive', '==', filters.active);
+    } else if (!filters.includeArchived) {
       baseQuery = baseQuery.where('isActive', '==', true);
     }
 

@@ -187,10 +187,6 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                     value: 'BANK_TRANSFER',
                     child: Text(l10n.paymentMethodBank),
                   ),
-                  DropdownMenuItem(
-                    value: 'CARD',
-                    child: Text(l10n.paymentMethodCard),
-                  ),
                 ],
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedPaymentMethod = val);

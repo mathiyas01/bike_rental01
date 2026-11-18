@@ -34,7 +34,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           : '',
     );
     final reasonController = TextEditingController();
-    String movementType = 'PURCHASE'; // PURCHASE, USAGE_NON_SERVICE, ADJUSTMENT
+    String movementType = 'STOCK_IN'; // STOCK_IN, STOCK_OUT, ADJUSTMENT
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -65,11 +65,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     ),
                     items: const [
                       DropdownMenuItem(
-                        value: 'PURCHASE',
+                        value: 'STOCK_IN',
                         child: Text('Stock In (Purchase)'),
                       ),
                       DropdownMenuItem(
-                        value: 'USAGE_NON_SERVICE',
+                        value: 'STOCK_OUT',
                         child: Text('Stock Out (Non-Service)'),
                       ),
                       DropdownMenuItem(
@@ -102,7 +102,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  if (movementType == 'PURCHASE') ...[
+                  if (movementType == 'STOCK_IN') ...[
                     TextFormField(
                       controller: costController,
                       decoration: InputDecoration(

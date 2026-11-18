@@ -34,6 +34,7 @@ export interface ServiceRecordDto {
   nextServiceDueOdometer: number | null;
   notes: string | null;
   partsUsed: ServicePartUsageDto[];
+  completedAt: string | null;
   createdAt: string;
 }
 

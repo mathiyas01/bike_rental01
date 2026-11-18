@@ -150,6 +150,26 @@ test('parseUpdateBikeInput and parseUpdateBikeStatusInput handle optional and re
   assert.equal(updated.serviceIntervalDays, null);
   assert.equal(updated.status, null);
 
+  // Stage C8.4.1: Flutter yearOfManufacture input alias on create & update
+  const fromFlutterCreate = parseCreateBikeInput({
+    registrationNumber: 'B-404-FLT',
+    vin: 'VIN-FLT-404',
+    make: 'Honda',
+    model: 'CB500X',
+    yearOfManufacture: 2024,
+  });
+  assert.equal(fromFlutterCreate.manufactureYear, 2024);
+
+  const fromFlutterUpdate = parseUpdateBikeInput({
+    registrationNumber: 'B-404-FLT',
+    vin: 'VIN-FLT-404',
+    make: 'Honda',
+    model: 'CB500X',
+    yearOfManufacture: 2025,
+    currentOdometer: 100,
+  });
+  assert.equal(fromFlutterUpdate.manufactureYear, 2025);
+
   assertValidationFailure(
     () => parseUpdateBikeInput({
       registrationNumber: 'B-101-UPD',

@@ -14,7 +14,7 @@ import {
   type PlannedWriteEntry,
 } from '../inventory/inventory.validation.js';
 import { addDays } from '../shared/dates.js';
-import { BusinessError } from '../shared/errors.js';
+import { BusinessError, NotFoundError } from '../shared/errors.js';
 import { toMinorUnits } from '../shared/money.js';
 import { toPage, type PageResponse } from '../shared/pagination.js';
 import {
@@ -22,6 +22,7 @@ import {
   SERVICE_PART_USAGE,
   SERVICE_RECORDS,
   ServicingRepository,
+  serviceRecordFrom,
   toServiceRecordDto,
 } from './servicing.repository.js';
 import type { ServiceRecordDto } from './servicing.types.js';
@@ -31,6 +32,7 @@ import {
   parseDueServicesQuery,
   parseLogServiceInput,
   parseServiceSearchQuery,
+  parseUpdateServiceStatusInput,
 } from './servicing.validation.js';
 
 export class ServicingService {
@@ -221,5 +223,49 @@ export class ServicingService {
     const targetDate = parseDueServicesQuery(rawQuery);
     const records = await this.repository.getDueServices(targetDate);
     return records.map(toServiceRecordDto);
+  }
+
+  async updateServiceStatus(
+    serviceId: string,
+    rawBody: unknown,
+    authUser: AuthenticatedUser,
+  ): Promise<ServiceRecordDto> {
+    const input = parseUpdateServiceStatusInput(rawBody);
+
+    return this.firestore.runTransaction(async (tx) => {
+      const now = Timestamp.now();
+      const serviceRef = this.repository.serviceRecordRef(serviceId);
+      const userRef = this.repository.appUserRef(authUser.id);
+
+      const [serviceSnap, userSnap] = await Promise.all([
+        tx.get(serviceRef),
+        tx.get(userRef),
+      ]);
+
+      this.repository.readAuditUser(userSnap);
+
+      if (!serviceSnap.exists) {
+        throw new NotFoundError('Service record', serviceId);
+      }
+
+      const existing = serviceRecordFrom(serviceSnap.id, serviceSnap.data() ?? {});
+      if (existing.status !== 'PLANNED' && existing.status !== 'IN_PROGRESS') {
+        throw new BusinessError(
+          `Cannot mark service as COMPLETED from status ${existing.status}`,
+        );
+      }
+
+      const updates = {
+        status: input.status,
+        completedAt: now,
+        updatedAt: now,
+      };
+      tx.update(serviceRef, updates);
+
+      return toServiceRecordDto({
+        ...existing,
+        ...updates,
+      });
+    });
   }
 }

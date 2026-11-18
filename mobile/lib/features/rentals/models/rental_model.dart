@@ -43,7 +43,7 @@ class RentalModel {
       customerId: json['customerId']?.toString() ?? '',
       customerName: json['customerName']?.toString() ?? '',
       customerPhone: json['customerPhone']?.toString() ?? '',
-      motorbikeId: json['motorbikeId']?.toString() ?? '',
+      motorbikeId: json['bikeId']?.toString() ?? json['motorbikeId']?.toString() ?? '',
       bikeRegistrationNumber: json['bikeRegistrationNumber']?.toString() ?? '',
       bikeMakeModel: json['bikeMakeModel']?.toString() ?? '',
       startDate: DateTime.tryParse(json['startDate'].toString()) ?? DateTime.now(),

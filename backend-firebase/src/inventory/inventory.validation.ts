@@ -90,15 +90,23 @@ export function validateCurrency(value: unknown, field = 'currency'): Currency {
   return value as Currency;
 }
 
+const STOCK_MOVEMENT_ALIASES: Record<string, StockMovementType> = {
+  PURCHASE: 'STOCK_IN',
+  USAGE_NON_SERVICE: 'STOCK_OUT',
+};
+
 export function validateStockMovementType(value: unknown, field = 'movementType'): StockMovementType {
-  if (typeof value !== 'string' || !STOCK_MOVEMENT_TYPES.has(value as StockMovementType)) {
+  const normalized = typeof value === 'string'
+    ? (STOCK_MOVEMENT_ALIASES[value] ?? value)
+    : value;
+  if (typeof normalized !== 'string' || !STOCK_MOVEMENT_TYPES.has(normalized as StockMovementType)) {
     fail(
       field,
       value,
       'movementType must be one of: STOCK_IN, STOCK_OUT, SERVICE_USAGE, RETURN, ADJUSTMENT, REVERSAL',
     );
   }
-  return value as StockMovementType;
+  return normalized as StockMovementType;
 }
 
 export function parseBoundedDecimal(
@@ -201,9 +209,13 @@ export function parseUpdatePartInput(body: unknown): UpdatePartInput {
   const category = requireNonBlankString(data.category, 'category', 50).toUpperCase();
   const description = parseOptionalString(data.description, 'description');
 
-  const unitOfMeasure = data.unitOfMeasure === undefined
-    ? 'PCS'
-    : requireNonBlankString(data.unitOfMeasure, 'unitOfMeasure', 20).toUpperCase();
+  if (typeof data.unitOfMeasure !== 'string' || data.unitOfMeasure.trim().length === 0) {
+    fail('unitOfMeasure', data.unitOfMeasure, 'unitOfMeasure must not be blank');
+  }
+  if (data.unitOfMeasure.length > 20) {
+    fail('unitOfMeasure', data.unitOfMeasure, 'unitOfMeasure must not exceed 20 characters');
+  }
+  const unitOfMeasure = data.unitOfMeasure;
 
   const reorder = parseBoundedDecimal(data.minReorderLevel, 'minReorderLevel', 0, MAX_QUANTITY_MINOR);
   const unitCost = parseBoundedDecimal(data.defaultUnitCost, 'defaultUnitCost', 0, MAX_COST_MINOR);
@@ -239,9 +251,12 @@ export function parseRecordStockMovementInput(body: unknown): RecordStockMovemen
     ? null
     : requireUuid(typeof data.referenceId === 'string' ? data.referenceId : undefined, 'referenceId');
 
-  const unitCost = data.unitCost === undefined || data.unitCost === null
-    ? null
-    : parseBoundedDecimal(data.unitCost, 'unitCost', 0, MAX_COST_MINOR).canonical;
+  const unitCost =
+    data.unitCost === undefined ||
+    data.unitCost === null ||
+    (typeof data.unitCost === 'string' && data.unitCost.trim() === '')
+      ? null
+      : parseBoundedDecimal(data.unitCost, 'unitCost', 0, MAX_COST_MINOR).canonical;
 
   let currency: Currency | null;
   if (!Object.prototype.hasOwnProperty.call(data, 'currency') || data.currency === undefined) {
@@ -318,9 +333,14 @@ export function parseServicePartsUsed(partsUsed: unknown): ServicePartUsageInput
     const unitCost = item.unitCost === undefined || item.unitCost === null
       ? null
       : parseBoundedDecimal(item.unitCost, `partsUsed[${index}].unitCost`, 0, MAX_COST_MINOR).canonical;
-    const currency = item.currency === undefined || item.currency === null
-      ? null
-      : validateCurrency(item.currency, `partsUsed[${index}].currency`);
+    let currency: Currency | null;
+    if (!Object.prototype.hasOwnProperty.call(item, 'currency') || item.currency === undefined) {
+      currency = 'RON';
+    } else if (item.currency === null) {
+      currency = null;
+    } else {
+      currency = validateCurrency(item.currency, `partsUsed[${index}].currency`);
+    }
 
     uniqueParts.add(partId);
     items.push({
@@ -413,13 +433,16 @@ export function parsePartSearchQuery(
   const page = parsePage(
     query,
     'partCode',
-    ['partCode', 'name', 'category', 'currentQuantity', 'minReorderLevel', 'defaultUnitCost', 'createdAt', 'isActive'],
+    ['partCode', 'name', 'category', 'currentQuantity', 'minReorderLevel', 'defaultUnitCost', 'createdAt', 'isActive', 'active'],
     'ASC',
   );
   const filters: PartSearchFilters = {
     includeArchived: parseOptionalBooleanQuery(query.includeArchived, 'includeArchived', false),
     lowStockOnly: parseOptionalBooleanQuery(query.lowStockOnly, 'lowStockOnly', false),
   };
+  if (query.active !== undefined && query.active !== null && query.active !== '') {
+    filters.active = parseOptionalBooleanQuery(query.active, 'active', true);
+  }
 
   const searchRaw = nonEmptyQueryString(query.search);
   if (searchRaw !== undefined) {
@@ -470,10 +493,13 @@ export function parseStockMovementSearchQuery(
 export function parseSupplierSearchQuery(
   query: Record<string, unknown>,
 ): { filters: SupplierSearchFilters; page: PageRequest } {
-  const page = parsePage(query, 'name', ['name', 'createdAt', 'isActive'], 'ASC');
+  const page = parsePage(query, 'name', ['name', 'createdAt', 'isActive', 'active'], 'ASC');
   const filters: SupplierSearchFilters = {
     includeArchived: parseOptionalBooleanQuery(query.includeArchived, 'includeArchived', false),
   };
+  if (query.active !== undefined && query.active !== null && query.active !== '') {
+    filters.active = parseOptionalBooleanQuery(query.active, 'active', true);
+  }
 
   const searchRaw = nonEmptyQueryString(query.search);
   if (searchRaw !== undefined) {

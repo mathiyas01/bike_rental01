@@ -219,6 +219,7 @@ export interface ServiceRecordDocument {
   partsUsed: EmbeddedServicePartUsage[];
   recordedByUserId: string;
   recordedByUserName: string;
+  completedAt?: Timestamp | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

@@ -130,6 +130,7 @@ export function serviceRecordFrom(
     ),
     recordedByUserId: String(data.recordedByUserId ?? ''),
     recordedByUserName: String(data.recordedByUserName ?? ''),
+    ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   };
@@ -173,6 +174,10 @@ export function toServiceRecordDto(record: ServiceRecordDocument): ServiceRecord
         : null,
     notes: record.notes,
     partsUsed: record.partsUsed.map(toServicePartUsageDto),
+    completedAt:
+      record.completedAt !== undefined && record.completedAt !== null
+        ? timestampToIso(record.completedAt)
+        : null,
     createdAt: timestampToIso(record.createdAt),
   };
 }

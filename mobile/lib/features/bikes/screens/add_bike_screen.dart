@@ -74,7 +74,7 @@ class _AddBikeScreenState extends ConsumerState<AddBikeScreen> {
         'vin': _vinController.text.trim().toUpperCase(),
         'make': _makeController.text.trim(),
         'model': _modelController.text.trim(),
-        'yearOfManufacture': int.parse(_yearController.text.trim()),
+        'manufactureYear': int.parse(_yearController.text.trim()),
         'currentOdometer': double.parse(_odometerController.text.trim()),
         'serviceIntervalDays': int.parse(
           _serviceIntervalController.text.trim(),

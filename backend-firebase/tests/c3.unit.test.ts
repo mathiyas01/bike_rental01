@@ -10,7 +10,11 @@ import {
 } from '../src/rental/rental.repository.js';
 import type { ChargeDocument } from '../src/domain/types.js';
 import { UnprocessableEntityError } from '../src/shared/errors.js';
-import { addDays, parseDate } from '../src/shared/dates.js';
+import { addDays, parseDate, todayBucharest, todayInTimeZone } from '../src/shared/dates.js';
+import { ReportsService } from '../src/reports/reports.service.js';
+import type { ReportsRepository } from '../src/reports/reports.repository.js';
+import { parseDueServicesQuery } from '../src/servicing/servicing.validation.js';
+import { parseCreateCustomerInput } from '../src/reference/reference.validation.js';
 import { normalizeAllocation, normalizeMoney, moneyToJson } from '../src/shared/money.js';
 import { parsePage } from '../src/shared/pagination.js';
 
@@ -208,4 +212,52 @@ test('RentalRepository.pageCharges enforces 1,000-doc limit with rentalId and pr
   );
   assert.equal(nonRental.didCallCount(), true);
   assert.equal(nonRentalRes.totalElements, 2);
+});
+
+test('Europe/Bucharest business-date helper handles winter/summer midnight, month start, and explicit dates', async () => {
+  // Winter (EET = UTC+2): 2026-01-15T21:59:59Z is 23:59:59 in Bucharest; 22:00:00Z is 2026-01-16 00:00:00
+  assert.equal(todayBucharest(new Date('2026-01-15T21:59:59.000Z')), '2026-01-15');
+  assert.equal(todayBucharest(new Date('2026-01-15T22:00:00.000Z')), '2026-01-16');
+
+  // Summer (EEST = UTC+3): 2026-07-15T20:59:59Z is 23:59:59 in Bucharest; 21:00:00Z is 2026-07-16 00:00:00
+  assert.equal(todayBucharest(new Date('2026-07-15T20:59:59.000Z')), '2026-07-15');
+  assert.equal(todayBucharest(new Date('2026-07-15T21:00:00.000Z')), '2026-07-16');
+  assert.equal(todayInTimeZone(new Date('2026-07-15T21:00:00.000Z'), 'UTC'), '2026-07-15');
+
+  // First day of month boundary in Bucharest (2026-03-31T21:30:00Z = 2026-04-01 00:30 EEST)
+  const captured: Array<{ start: string; end: string; overdueDate: string }> = [];
+  const fakeRepo = {
+    listActiveBikes: async () => [],
+    countOverdueOrDueCharges: async (asOfDate: string) => {
+      captured.push({ start: '', end: '', overdueDate: asOfDate });
+      return 0;
+    },
+    countLowStockParts: async () => 0,
+    listConfirmedPaymentsInDateRange: async (startDate: string, endDate: string) => {
+      captured.push({ start: startDate, end: endDate, overdueDate: '' });
+      return [];
+    },
+  } as unknown as ReportsRepository;
+
+  const reports = new ReportsService({} as Firestore, fakeRepo);
+  await reports.getDashboardKpis(undefined, new Date('2026-03-31T21:30:00.000Z'));
+  assert.equal(captured[0]?.overdueDate, '2026-04-01');
+  assert.equal(captured[1]?.start, '2026-04-01');
+  assert.equal(captured[1]?.end, '2026-04-01');
+
+  // Explicit dates remain unchanged
+  assert.equal(
+    parseDueServicesQuery({ asOfDate: '2026-05-10' }, new Date('2026-01-15T22:30:00.000Z')),
+    '2026-05-10',
+  );
+  assert.equal(
+    parseDueServicesQuery({}, new Date('2026-01-15T22:30:00.000Z')),
+    '2026-01-16',
+  );
+  const customer = parseCreateCustomerInput({
+    fullName: 'Test Customer',
+    phone: '+40700111222',
+    gdprConsentDate: '2026-02-01',
+  });
+  assert.equal(customer.gdprConsentDate, '2026-02-01');
 });

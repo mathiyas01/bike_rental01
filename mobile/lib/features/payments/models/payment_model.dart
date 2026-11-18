@@ -17,9 +17,9 @@ class PaymentAllocation {
     return PaymentAllocation(
       id: json['id'] ?? '',
       rentalChargeId: json['rentalChargeId'] ?? '',
-      sequenceNumber: json['sequenceNumber'] ?? 0,
+      sequenceNumber: json['chargeSequence'] ?? json['sequenceNumber'] ?? 0,
       allocatedAmount: (json['allocatedAmount'] as num?)?.toDouble() ?? 0.0,
-      createdAt: json['createdAt'] ?? '',
+      createdAt: json['allocatedAt']?.toString() ?? json['createdAt']?.toString() ?? '',
     );
   }
 }

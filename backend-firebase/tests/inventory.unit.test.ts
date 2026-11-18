@@ -21,6 +21,7 @@ import {
   parseRecordStockMovementInput,
   parseServicePartsUsed,
   parseStockMovementSearchQuery,
+  parseSupplierSearchQuery,
   parseUpdatePartInput,
 } from '../src/inventory/inventory.validation.js';
 import { UnprocessableEntityError, ValidationError } from '../src/shared/errors.js';
@@ -100,19 +101,34 @@ test('parseCreatePartInput normalizes defaults and rejects explicit null default
   );
 });
 
-test('parseUpdatePartInput enforces required minReorderLevel and defaultUnitCost', () => {
+test('parseUpdatePartInput enforces required unitOfMeasure, preserves casing, and requires minReorderLevel/defaultUnitCost', () => {
   const updated = parseUpdatePartInput({
     name: 'Front Pad',
     category: 'brakes',
+    unitOfMeasure: 'liters',
     minReorderLevel: 5,
     defaultUnitCost: '12.50',
     defaultSupplierId: SUPPLIER_ID,
   });
   assert.equal(updated.category, 'BRAKES');
-  assert.equal(updated.unitOfMeasure, 'PCS');
+  assert.equal(updated.unitOfMeasure, 'liters');
   assert.equal(updated.minReorderLevel, '5.00');
   assert.equal(updated.defaultUnitCost, '12.50');
   assert.equal(updated.defaultSupplierId, SUPPLIER_ID);
+
+  for (const badUnit of [undefined, null, '', '   ', 'x'.repeat(21)]) {
+    assert.throws(
+      () =>
+        parseUpdatePartInput({
+          name: 'Front Pad',
+          category: 'BRAKES',
+          ...(badUnit !== undefined ? { unitOfMeasure: badUnit } : {}),
+          minReorderLevel: '5.00',
+          defaultUnitCost: '12.50',
+        }),
+      ValidationError,
+    );
+  }
 
   assert.throws(
     () =>
@@ -144,6 +160,23 @@ test('parseRecordStockMovementInput preserves @DecimalMin(0.01), currency defaul
   assert.equal(omittedCurrency.currency, 'RON');
   assert.equal(omittedCurrency.unitCost, null);
 
+  // Stage C8.4.1: Flutter inventory enum aliases & React empty unitCost string compatibility
+  const flutterPurchase = parseRecordStockMovementInput({
+    partId: PART_ID,
+    quantity: 2,
+    movementType: 'PURCHASE',
+    unitCost: '',
+  });
+  assert.equal(flutterPurchase.movementType, 'STOCK_IN');
+  assert.equal(flutterPurchase.unitCost, null);
+
+  const flutterUsage = parseRecordStockMovementInput({
+    partId: PART_ID,
+    quantity: 1,
+    movementType: 'USAGE_NON_SERVICE',
+  });
+  assert.equal(flutterUsage.movementType, 'STOCK_OUT');
+
   const nullCurrency = parseRecordStockMovementInput({
     partId: PART_ID,
     quantity: '2.50',
@@ -174,7 +207,7 @@ test('parseRecordStockMovementInput preserves @DecimalMin(0.01), currency defaul
     );
   }
 
-  for (const invalidType of ['PURCHASE', 'USAGE_NON_SERVICE', 'stock_in']) {
+  for (const invalidType of ['INVALID_TYPE', 'stock_in']) {
     assert.throws(
       () =>
         parseRecordStockMovementInput({
@@ -242,13 +275,45 @@ test('parseCreateSupplierInput allows non-standard email strings up to 150 chars
   const partQuery = parsePartSearchQuery({
     includeArchived: 'true',
     lowStockOnly: 'false',
+    active: 'false',
     category: 'brakes',
     search: '  pad ',
+    sort: 'active,desc',
   });
   assert.equal(partQuery.filters.includeArchived, true);
   assert.equal(partQuery.filters.lowStockOnly, false);
+  assert.equal(partQuery.filters.active, false);
   assert.equal(partQuery.filters.category, 'BRAKES');
   assert.equal(partQuery.filters.search, 'pad');
+  assert.equal(partQuery.page.sortField, 'active');
+  assert.equal(partQuery.page.direction, 'DESC');
+
+  const partDefaultActive = parsePartSearchQuery({});
+  assert.equal(partDefaultActive.filters.active, undefined);
+
+  assert.throws(() => parsePartSearchQuery({ active: 'invalid' }), ValidationError);
+
+  const supQuery = parsePartSearchQuery({ sort: 'active,asc', active: 'true' });
+  assert.equal(supQuery.filters.active, true);
+  assert.equal(supQuery.page.sortField, 'active');
+  assert.throws(() => parsePartSearchQuery({ sort: 'unknown,asc' }), ValidationError);
+
+  const supplierDefault = parseSupplierSearchQuery({});
+  assert.equal(supplierDefault.filters.includeArchived, false);
+  assert.equal(supplierDefault.filters.active, undefined);
+  assert.equal(supplierDefault.page.sortField, 'name');
+  assert.equal(supplierDefault.page.direction, 'ASC');
+
+  const supplierActiveSort = parseSupplierSearchQuery({
+    includeArchived: 'true',
+    active: 'false',
+    sort: 'active,desc',
+  });
+  assert.equal(supplierActiveSort.filters.includeArchived, true);
+  assert.equal(supplierActiveSort.filters.active, false);
+  assert.equal(supplierActiveSort.page.sortField, 'active');
+  assert.equal(supplierActiveSort.page.direction, 'DESC');
+  assert.throws(() => parseSupplierSearchQuery({ active: 'invalid' }), ValidationError);
 
   const movQuery = parseStockMovementSearchQuery({
     startDate: '2026-01-01T00:00:00Z',
@@ -269,6 +334,14 @@ test('parseCreateSupplierInput allows non-standard email strings up to 150 chars
 
 test('Stage C6 parseServicePartsUsed and assertTransactionBudget enforce 422 bounds', () => {
   assert.deepEqual(parseServicePartsUsed(undefined), []);
+  const currencyDefaults = parseServicePartsUsed([
+    { partId: PART_ID, quantity: 1 },
+    { partId: PART_ID, quantity: 1, currency: null },
+    { partId: PART_ID, quantity: 1, currency: 'EUR' },
+  ]);
+  assert.equal(currencyDefaults[0]?.currency, 'RON');
+  assert.equal(currencyDefaults[1]?.currency, null);
+  assert.equal(currencyDefaults[2]?.currency, 'EUR');
   const oversized = Array.from({ length: MAX_SERVICE_PARTS_ITEMS + 1 }, () => ({
     partId: PART_ID,
     quantity: 1,

@@ -1,6 +1,6 @@
 import type { BikeStatus } from '../domain/types.js';
 import { parseBoundedDecimal } from '../inventory/inventory.validation.js';
-import { parseDate, todayUtc } from '../shared/dates.js';
+import { parseDate, todayBucharest } from '../shared/dates.js';
 import { ValidationError } from '../shared/errors.js';
 import { parsePage, type PageRequest } from '../shared/pagination.js';
 import {
@@ -201,7 +201,8 @@ export function parseCreateBikeInput(body: unknown): CreateBikeInput {
   const vin = requireTrimmedString(data.vin, 'vin', 5, 30).toUpperCase();
   const make = requireTrimmedString(data.make, 'make', 1, 50);
   const model = requireTrimmedString(data.model, 'model', 1, 50);
-  const manufactureYear = parseRequiredInteger(data.manufactureYear, 'manufactureYear', 1990, 2050);
+  const rawManufactureYear = data.manufactureYear !== undefined ? data.manufactureYear : data.yearOfManufacture;
+  const manufactureYear = parseRequiredInteger(rawManufactureYear, 'manufactureYear', 1990, 2050);
 
   let currentOdometer = '0.00';
   if (hasOwn(data, 'currentOdometer') && data.currentOdometer !== undefined) {
@@ -246,7 +247,8 @@ export function parseUpdateBikeInput(body: unknown): UpdateBikeInput {
   const vin = requireTrimmedString(data.vin, 'vin', 5, 30).toUpperCase();
   const make = requireTrimmedString(data.make, 'make', 1, 50);
   const model = requireTrimmedString(data.model, 'model', 1, 50);
-  const manufactureYear = parseRequiredInteger(data.manufactureYear, 'manufactureYear', 1990, 2050);
+  const rawManufactureYear = data.manufactureYear !== undefined ? data.manufactureYear : data.yearOfManufacture;
+  const manufactureYear = parseRequiredInteger(rawManufactureYear, 'manufactureYear', 1990, 2050);
   const currentOdometer = parseBoundedDecimal(data.currentOdometer, 'currentOdometer', 0, MAX_ODOMETER_MINOR).canonical;
 
   const serviceIntervalDays = data.serviceIntervalDays === undefined || data.serviceIntervalDays === null
@@ -315,7 +317,7 @@ export function parseCreateCustomerInput(body: unknown): CreateCustomerInput {
     licenceCategories: parseOptionalTrimmedString(data.licenceCategories, 'licenceCategories', 50) ?? 'A,A2',
     licenceExpiryDate: parseOptionalDate(data.licenceExpiryDate, 'licenceExpiryDate'),
     address: parseOptionalTrimmedString(data.address, 'address'),
-    gdprConsentDate: parseOptionalDate(data.gdprConsentDate, 'gdprConsentDate') ?? todayUtc(),
+    gdprConsentDate: parseOptionalDate(data.gdprConsentDate, 'gdprConsentDate') ?? todayBucharest(),
     notes: parseOptionalTrimmedString(data.notes, 'notes'),
   };
 }

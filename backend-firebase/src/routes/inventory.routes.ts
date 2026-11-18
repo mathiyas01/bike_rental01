@@ -4,13 +4,14 @@ import type { AppConfig } from '../config/env.js';
 import { createInventoryController } from '../controllers/inventory.controller.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { createAuthMiddleware } from '../middleware/auth.middleware.js';
+import { ownerMiddleware } from '../middleware/owner.middleware.js';
 
 export function createPartRouter(firestore: Firestore, config: AppConfig): Router {
   const router = Router();
   const controller = createInventoryController(new InventoryService(firestore));
 
-  // Inventory routes require authentication only (no ownerMiddleware), matching Java SecurityConfig.
-  router.use(createAuthMiddleware(firestore, config));
+  // Inventory endpoints enforce ROLE_OWNER authorization (intentional security hardening over Java SecurityConfig).
+  router.use(createAuthMiddleware(firestore, config), ownerMiddleware);
 
   router.post('/', controller.createPart);
   // Register /low-stock before /:id so Express never matches "low-stock" as a part UUID.
@@ -28,7 +29,7 @@ export function createStockMovementRouter(firestore: Firestore, config: AppConfi
   const router = Router();
   const controller = createInventoryController(new InventoryService(firestore));
 
-  router.use(createAuthMiddleware(firestore, config));
+  router.use(createAuthMiddleware(firestore, config), ownerMiddleware);
 
   router.post('/', controller.recordStockMovement);
   router.get('/part/:partId', controller.getMovementsForPart);
@@ -41,7 +42,7 @@ export function createSupplierRouter(firestore: Firestore, config: AppConfig): R
   const router = Router();
   const controller = createInventoryController(new InventoryService(firestore));
 
-  router.use(createAuthMiddleware(firestore, config));
+  router.use(createAuthMiddleware(firestore, config), ownerMiddleware);
 
   router.post('/', controller.createSupplier);
   router.get('/', controller.listSuppliers);

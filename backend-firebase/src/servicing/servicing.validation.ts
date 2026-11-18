@@ -7,7 +7,7 @@ import {
   parseServicePartsUsed,
   validateCurrency,
 } from '../inventory/inventory.validation.js';
-import { parseDate, todayUtc } from '../shared/dates.js';
+import { parseDate, todayBucharest } from '../shared/dates.js';
 import { ValidationError } from '../shared/errors.js';
 import { requireUuid } from '../shared/ids.js';
 import {
@@ -223,10 +223,23 @@ export function parseServiceSearchQuery(
   return { filters, page };
 }
 
-export function parseDueServicesQuery(query: Record<string, unknown>): string {
+export function parseDueServicesQuery(query: Record<string, unknown>, referenceDate?: Date): string {
   const asOfDateRaw = nonEmptyQueryString(query.asOfDate);
   if (asOfDateRaw !== undefined) {
     return parseValidDate(asOfDateRaw, 'asOfDate');
   }
-  return todayUtc();
+  return todayBucharest(referenceDate);
+}
+
+export function parseUpdateServiceStatusInput(body: unknown): { status: 'COMPLETED' } {
+  const data = requirePlainObject(body);
+  const [firstExtraKey] = Object.keys(data).filter((key) => key !== 'status');
+  if (firstExtraKey !== undefined) {
+    fail(firstExtraKey, data[firstExtraKey], `Unknown field: ${firstExtraKey}`);
+  }
+  const status = validateServiceStatus(data.status, 'status');
+  if (status !== 'COMPLETED') {
+    fail('status', data.status, 'Only COMPLETED status transition is supported');
+  }
+  return { status };
 }

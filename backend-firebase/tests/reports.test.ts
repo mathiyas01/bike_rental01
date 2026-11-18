@@ -252,11 +252,12 @@ test('Reports endpoints: 4-route auth matrix & ROLE_CUSTOMER parity + empty-data
         assert.equal(res.status, 401, `Expected 401 on ${path}`);
       }
 
-      // Both ROLE_OWNER and ROLE_CUSTOMER succeed (no ownerMiddleware)
+      // Stage C8.4.3.1: ROLE_OWNER succeeds, ROLE_CUSTOMER receives 403 FORBIDDEN
       const ownerRes = await request(path, 'GET', `Bearer ${ownerToken}`);
       assert.equal(ownerRes.status, 200, `Expected 200 for ROLE_OWNER on ${path}`);
       const customerRes = await request(path, 'GET', `Bearer ${customerToken}`);
-      assert.equal(customerRes.status, 200, `Expected 200 for ROLE_CUSTOMER on ${path}`);
+      assert.equal(customerRes.status, 403, `Expected 403 FORBIDDEN for ROLE_CUSTOMER on ${path}`);
+      assert.equal((customerRes.body as Record<string, unknown>).error, 'FORBIDDEN');
     }
 
     // Empty-data assertions across all 4 DTOs
@@ -840,12 +841,35 @@ test('Reports endpoints: Bike ROI Java parity, large-value serialization, errors
 
   // Bike 3: large-value lossless scale-4 check through live HTTP endpoint
   const bike3 = await seedBike(firestore, { registrationNumber: 'B-33-BIG', make: 'BMW', model: 'R1250GS' });
+  const rental3 = randomUUID();
+  await firestore.collection('rentals').doc(rental3).set({
+    id: rental3,
+    customerId,
+    customerName: 'Customer',
+    customerPhone: '0700',
+    bikeId: bike3,
+    bikeRegistrationNumber: 'B-33-BIG',
+    bikeMakeModel: 'BMW R1250GS',
+    startDate: '2026-06-01',
+    plannedEndDate: null,
+    actualClosedDate: null,
+    weeklyRate: '100.00',
+    currency: 'RON',
+    depositAmount: '0.00',
+    depositCurrency: 'RON',
+    paymentFrequency: 'WEEKLY',
+    scheduleAnchorDay: 'START_DAY',
+    status: 'ACTIVE',
+    termsAndNotes: null,
+    createdAt: nowTs,
+    updatedAt: nowTs,
+  });
   const bigPaymentId = randomUUID();
   await firestore.collection('payments').doc(bigPaymentId).set({
     id: bigPaymentId,
     customerId,
     customerName: 'Customer',
-    rentalId: bike3,
+    rentalId: rental3,
     paymentDate: '2026-06-08',
     amount: '200000000000.00',
     currency: 'RON',
@@ -918,28 +942,28 @@ test('Reports endpoints: Bike ROI Java parity, large-value serialization, errors
     const missingBike = await request(`/api/v1/reports/bike-roi/${randomUUID()}`, 'GET', `Bearer ${ownerToken}`);
     assert.equal(missingBike.status, 404);
 
-    // Case 1: Normal rental-linked payments do NOT populate totalRevenue under literal Java parity
+    // Case 1: Normal rental-linked CONFIRMED payment attributes revenue to bike1
     const roi1 = await request(`/api/v1/reports/bike-roi/${bike1}`, 'GET', `Bearer ${ownerToken}`);
     assert.equal(roi1.status, 200);
     assert.deepEqual(roi1.body, {
       bikeId: bike1,
       registrationNumber: 'B-11-NRM',
       makeModel: 'Kawasaki Z650',
-      totalRevenue: { RON: 0, EUR: 0, USD: 0 },
+      totalRevenue: { RON: 500, EUR: 0, USD: 0 },
       totalMaintenanceCost: { RON: 112.5625, EUR: 0, USD: 0 },
-      netProfit: { RON: -112.5625, EUR: 0, USD: 0 },
+      netProfit: { RON: 387.4375, EUR: 0, USD: 0 },
     });
 
-    // Case 2: Archived bike + direct rentalId === bike2 includes BOTH CONFIRMED and REVERSED payments
+    // Case 2: Unlinked literal-parity payments (rentalId === bike2 without rental) yield 0 revenue
     const roi2 = await request(`/api/v1/reports/bike-roi/${bike2}`, 'GET', `Bearer ${ownerToken}`);
     assert.equal(roi2.status, 200);
     assert.deepEqual(roi2.body, {
       bikeId: bike2,
       registrationNumber: 'B-22-PAR',
       makeModel: 'Yamaha MT-07',
-      totalRevenue: { RON: 250, EUR: 40, USD: 0 },
+      totalRevenue: { RON: 0, EUR: 0, USD: 0 },
       totalMaintenanceCost: { RON: 112.5625, EUR: 0, USD: 0 },
-      netProfit: { RON: 137.4375, EUR: 40, USD: 0 },
+      netProfit: { RON: -112.5625, EUR: 0, USD: 0 },
     });
 
     // Case 3: Large values remain exact across 200B - 123456810864.1950 = 76543189135.8050
@@ -952,6 +976,223 @@ test('Reports endpoints: Bike ROI Java parity, large-value serialization, errors
       totalRevenue: { RON: 200000000000, EUR: 0, USD: 0 },
       totalMaintenanceCost: { RON: 123456810864.195, EUR: 0, USD: 0 },
       netProfit: { RON: 76543189135.805, EUR: 0, USD: 0 },
+    });
+  });
+});
+
+test('Bike ROI accurately attributes direct rental payments and customer-level allocations without double-counting', async (context) => {
+  if (!process.env.FIRESTORE_EMULATOR_HOST ||
+    !await reachable(process.env.FIRESTORE_EMULATOR_HOST)) {
+    context.skip('Run with the Firestore emulator');
+    return;
+  }
+
+  const { firestore } = initializeFirebase(config);
+  await clearCollections(firestore);
+
+  const ownerId = randomUUID();
+  await seedUser(firestore, { id: ownerId, email: 'owner-roi@test.local', fullName: 'Owner', role: 'ROLE_OWNER' });
+  const ownerToken = makeToken(ownerId, 'owner-roi@test.local', 'ROLE_OWNER');
+
+  const customerId = randomUUID();
+  const nowTs = Timestamp.fromDate(new Date());
+  const bikeA = await seedBike(firestore, { registrationNumber: 'B-10-ROA', make: 'Honda', model: 'NC750X' });
+  const bikeB = await seedBike(firestore, { registrationNumber: 'B-20-ROB', make: 'Suzuki', model: 'V-Strom' });
+
+  const rentalA1 = randomUUID();
+  const rentalA2 = randomUUID();
+  const rentalA3 = randomUUID();
+  const rentalB1 = randomUUID();
+
+  for (const r of [
+    { id: rentalA1, bikeId: bikeA, reg: 'B-10-ROA', mm: 'Honda NC750X', currency: 'RON' },
+    { id: rentalA2, bikeId: bikeA, reg: 'B-10-ROA', mm: 'Honda NC750X', currency: 'EUR' },
+    { id: rentalA3, bikeId: bikeA, reg: 'B-10-ROA', mm: 'Honda NC750X', currency: 'USD' },
+    { id: rentalB1, bikeId: bikeB, reg: 'B-20-ROB', mm: 'Suzuki V-Strom', currency: 'RON' },
+  ]) {
+    await firestore.collection('rentals').doc(r.id).set({
+      id: r.id,
+      customerId,
+      customerName: 'Customer',
+      customerPhone: '0700',
+      bikeId: r.bikeId,
+      bikeRegistrationNumber: r.reg,
+      bikeMakeModel: r.mm,
+      startDate: '2026-07-01',
+      plannedEndDate: null,
+      actualClosedDate: null,
+      weeklyRate: '100.00',
+      currency: r.currency,
+      depositAmount: '0.00',
+      depositCurrency: r.currency,
+      paymentFrequency: 'WEEKLY',
+      scheduleAnchorDay: 'START_DAY',
+      status: 'ACTIVE',
+      termsAndNotes: null,
+      createdAt: nowTs,
+      updatedAt: nowTs,
+    });
+  }
+
+  // Charges on bikeA and bikeB
+  const chargeA1 = randomUUID();
+  const chargeA2 = randomUUID();
+  const chargeB1 = randomUUID();
+  for (const c of [
+    { id: chargeA1, rentalId: rentalA1, bikeId: bikeA, amount: '300.00', currency: 'RON' },
+    { id: chargeA2, rentalId: rentalA2, bikeId: bikeA, amount: '100.00', currency: 'EUR' },
+    { id: chargeB1, rentalId: rentalB1, bikeId: bikeB, amount: '200.00', currency: 'RON' },
+  ]) {
+    await firestore.collection('rental_charges').doc(c.id).set({
+      id: c.id,
+      rentalId: c.rentalId,
+      customerId,
+      bikeId: c.bikeId,
+      chargeSequence: 1,
+      periodStartDate: '2026-07-01',
+      periodEndDate: '2026-07-07',
+      dueDate: '2026-07-07',
+      amount: c.amount,
+      currency: c.currency,
+      status: 'PARTIALLY_PAID',
+      paidAmount: '0.00',
+      remainingAmount: c.amount,
+      notes: '',
+      createdAt: nowTs,
+      updatedAt: nowTs,
+    });
+  }
+
+  const seedPayment = async (p: {
+    id: string;
+    rentalId: string | null;
+    amount: string;
+    currency: 'RON' | 'EUR' | 'USD';
+    status: 'CONFIRMED' | 'REVERSED';
+  }) => {
+    await firestore.collection('payments').doc(p.id).set({
+      id: p.id,
+      customerId,
+      customerName: 'Customer',
+      rentalId: p.rentalId,
+      paymentDate: '2026-07-05',
+      amount: p.amount,
+      currency: p.currency,
+      paymentMethod: 'BANK_TRANSFER',
+      referenceNumber: null,
+      notes: null,
+      status: p.status,
+      recordedByUserId: ownerId,
+      recordedByUserName: 'Owner',
+      allocationMode: 'MANUAL',
+      createdAt: nowTs,
+      updatedAt: nowTs,
+    });
+  };
+
+  // 1. Direct confirmed rental payments across multiple rentals & currencies on bikeA (RON 150, EUR 80, USD 45)
+  const pDirectA_RON = randomUUID();
+  const pDirectA_EUR = randomUUID();
+  const pDirectA_USD = randomUUID();
+  const pDirectA_REVERSED = randomUUID();
+  await seedPayment({ id: pDirectA_RON, rentalId: rentalA1, amount: '150.00', currency: 'RON', status: 'CONFIRMED' });
+  await seedPayment({ id: pDirectA_EUR, rentalId: rentalA2, amount: '80.00', currency: 'EUR', status: 'CONFIRMED' });
+  await seedPayment({ id: pDirectA_USD, rentalId: rentalA3, amount: '45.00', currency: 'USD', status: 'CONFIRMED' });
+  await seedPayment({ id: pDirectA_REVERSED, rentalId: rentalA1, amount: '999.00', currency: 'RON', status: 'REVERSED' });
+
+  // 2. Direct rental payment WITH an allocation record (must NOT be double-counted!)
+  await firestore.collection('payment_allocations').doc(randomUUID()).set({
+    id: randomUUID(),
+    paymentId: pDirectA_RON,
+    rentalChargeId: chargeA1,
+    chargeSequence: 1,
+    chargeDueDate: '2026-07-07',
+    allocatedAmount: '150.00',
+    currency: 'RON',
+    allocatedAt: nowTs,
+  });
+
+  // 3. Customer-level (rentalId === null) payment of 500 RON:
+  //    70 RON allocated to bikeA (chargeA1), 120 RON allocated to bikeB (chargeB1), 310 RON unallocated remainder
+  const pCustomerSplit = randomUUID();
+  await seedPayment({ id: pCustomerSplit, rentalId: null, amount: '500.00', currency: 'RON', status: 'CONFIRMED' });
+  await firestore.collection('payment_allocations').doc(randomUUID()).set({
+    id: randomUUID(),
+    paymentId: pCustomerSplit,
+    rentalChargeId: chargeA1,
+    chargeSequence: 1,
+    chargeDueDate: '2026-07-07',
+    allocatedAmount: '70.00',
+    currency: 'RON',
+    allocatedAt: nowTs,
+  });
+  await firestore.collection('payment_allocations').doc(randomUUID()).set({
+    id: randomUUID(),
+    paymentId: pCustomerSplit,
+    rentalChargeId: chargeB1,
+    chargeSequence: 1,
+    chargeDueDate: '2026-07-07',
+    allocatedAmount: '120.00',
+    currency: 'RON',
+    allocatedAt: nowTs,
+  });
+
+  // 4. Reversed customer-level (rentalId === null) payment allocated to bikeA (must be excluded!)
+  const pCustomerReversed = randomUUID();
+  await seedPayment({ id: pCustomerReversed, rentalId: null, amount: '200.00', currency: 'RON', status: 'REVERSED' });
+  await firestore.collection('payment_allocations').doc(randomUUID()).set({
+    id: randomUUID(),
+    paymentId: pCustomerReversed,
+    rentalChargeId: chargeA1,
+    chargeSequence: 1,
+    chargeDueDate: '2026-07-07',
+    allocatedAmount: '50.00',
+    currency: 'RON',
+    allocatedAt: nowTs,
+  });
+
+  // Scan-limit checks across rentals (3 > 2), payments (3 > 2), rental_charges (2 > 1), and payment_allocations (3 > 2)
+  const boundedRepo2 = new ReportsRepository(firestore, 2);
+  await assert.rejects(
+    () => boundedRepo2.listRentalIdsForBike(bikeA),
+    (err) => err instanceof UnprocessableEntityError && err.status === 422,
+  );
+  await assert.rejects(
+    () => boundedRepo2.listDirectPaymentsForRentals([rentalA1, rentalA2, rentalA3]),
+    (err) => err instanceof UnprocessableEntityError && err.status === 422,
+  );
+  await assert.rejects(
+    () => boundedRepo2.listAllocationsForCharges([chargeA1]),
+    (err) => err instanceof UnprocessableEntityError && err.status === 422,
+  );
+  const boundedRepo1 = new ReportsRepository(firestore, 1);
+  await assert.rejects(
+    () => boundedRepo1.listChargeIdsForBike(bikeA),
+    (err) => err instanceof UnprocessableEntityError && err.status === 422,
+  );
+
+  const app = createApp(config, firestore);
+  await withServer(app, async (request) => {
+    const roiA = await request(`/api/v1/reports/bike-roi/${bikeA}`, 'GET', `Bearer ${ownerToken}`);
+    assert.equal(roiA.status, 200);
+    assert.deepEqual(roiA.body, {
+      bikeId: bikeA,
+      registrationNumber: 'B-10-ROA',
+      makeModel: 'Honda NC750X',
+      totalRevenue: { RON: 220, EUR: 80, USD: 45 },
+      totalMaintenanceCost: { RON: 0, EUR: 0, USD: 0 },
+      netProfit: { RON: 220, EUR: 80, USD: 45 },
+    });
+
+    const roiB = await request(`/api/v1/reports/bike-roi/${bikeB}`, 'GET', `Bearer ${ownerToken}`);
+    assert.equal(roiB.status, 200);
+    assert.deepEqual(roiB.body, {
+      bikeId: bikeB,
+      registrationNumber: 'B-20-ROB',
+      makeModel: 'Suzuki V-Strom',
+      totalRevenue: { RON: 120, EUR: 0, USD: 0 },
+      totalMaintenanceCost: { RON: 0, EUR: 0, USD: 0 },
+      netProfit: { RON: 120, EUR: 0, USD: 0 },
     });
   });
 });

@@ -59,7 +59,7 @@ async function snapshotCounts(firestore: Firestore): Promise<Record<string, numb
   return result;
 }
 
-type HttpMethod = 'GET' | 'POST';
+type HttpMethod = 'GET' | 'POST' | 'PATCH';
 
 type RequestFn = (
   path: string,
@@ -270,12 +270,16 @@ test('Servicing endpoints: 5-route authentication & ROLE_CUSTOMER matrix', async
         const res = await request(route.path, route.method, header, route.body);
         assert.equal(res.status, 401, `Expected 401 on ${route.method} ${route.path} with ${header}`);
       }
-      // ROLE_CUSTOMER is permitted (matching Java SecurityConfig — no 403)
+      // Stage C8.4.3.1: ROLE_CUSTOMER receives 403 FORBIDDEN; ROLE_OWNER succeeds
       const custRes = await request(route.path, route.method, `Bearer ${customerToken}`, route.body);
+      assert.equal(custRes.status, 403, `Expected 403 FORBIDDEN for ROLE_CUSTOMER on ${route.method} ${route.path}`);
+      assert.equal((custRes.body as Record<string, unknown>).error, 'FORBIDDEN');
+
+      const ownerRes = await request(route.path, route.method, `Bearer ${ownerToken}`, route.body);
       assert.equal(
-        custRes.status,
+        ownerRes.status,
         route.method === 'POST' ? 201 : 200,
-        `Expected ROLE_CUSTOMER success on ${route.method} ${route.path}`,
+        `Expected ROLE_OWNER success on ${route.method} ${route.path}`,
       );
     }
   });
@@ -476,7 +480,7 @@ test('Servicing endpoints: all 4 statuses deduct stock, currency isolation, dupl
         labourCurrency: 'RON',
         partsUsed: [
           { partId: partRonId, quantity: 1.25 },
-          { partId: partEurId, quantity: 1 },
+          { partId: partEurId, quantity: 1, currency: 'EUR' },
         ],
       });
       assert.equal(res.status, 201);
@@ -494,6 +498,24 @@ test('Servicing endpoints: all 4 statuses deduct stock, currency isolation, dupl
     // 4 services * 1.25 = 5.00 used -> 5.00 remaining on FILT-01
     const filtAfter4 = (await firestore.collection('parts').doc(partRonId).get()).data()!;
     assert.equal(filtAfter4.currentQuantity, '5.00');
+
+    // Stage C8.4.2: omitted currency on an EUR part defaults to 'RON' per Java LogServicePartItem
+    const omittedCurrencyRes = await request('/api/v1/services', 'POST', `Bearer ${token}`, {
+      motorbikeId: bikeId,
+      serviceDate: '2026-11-06',
+      odometerReading: 1500,
+      serviceProvider: 'Workshop',
+      workPerformed: 'Omitted currency defaults to RON',
+      labourCost: 100,
+      labourCurrency: 'RON',
+      partsUsed: [{ partId: partEurId, quantity: 1 }],
+    });
+    assert.equal(omittedCurrencyRes.status, 201);
+    const omittedDto = omittedCurrencyRes.body as Record<string, unknown>;
+    const omittedUsages = omittedDto.partsUsed as Array<Record<string, unknown>>;
+    assert.equal(omittedUsages[0]?.currency, 'RON');
+    assert.equal(omittedDto.partsCost, 50);
+    assert.equal(omittedDto.totalCost, 150);
     assert.equal(filtAfter4.currentQuantityMinor, 500);
     assert.equal(filtAfter4.isLowStock, false);
 
@@ -833,5 +855,169 @@ test('Servicing endpoints: concurrency contention, transaction limits (422), and
     const indexedPast1000 = await request('/api/v1/services?page=0&size=5', 'GET', `Bearer ${token}`);
     assert.equal(indexedPast1000.status, 200);
     assert.equal((indexedPast1000.body as Record<string, unknown>).totalElements, 1005);
+
+    // 5. Status management: PATCH /api/v1/services/:id/status
+    await clearCollections(firestore);
+    await seedUser(firestore, { id: userId, email: 'ops@test.local', fullName: 'Ops User', role: 'ROLE_OWNER' });
+    const statusBikeId = await seedBike(firestore, { registrationNumber: 'B-55-STS', currentOdometer: '5000.00', serviceIntervalDays: 90 });
+    const partRes = await request('/api/v1/parts', 'POST', `Bearer ${token}`, {
+      partCode: 'FLT-55',
+      name: 'Oil Filter 55',
+      category: 'FILTERS',
+      initialQuantity: 10,
+      minReorderLevel: 2,
+      defaultUnitCost: 45,
+      costCurrency: 'RON',
+    });
+    assert.equal(partRes.status, 201);
+    const statusPartId = String((partRes.body as Record<string, unknown>).id);
+
+    const plannedCreate = await request('/api/v1/services', 'POST', `Bearer ${token}`, {
+      motorbikeId: statusBikeId,
+      serviceDate: '2026-11-12',
+      odometerReading: 5100,
+      serviceProvider: 'Moto Clinic',
+      workPerformed: 'Scheduled oil change',
+      labourCost: 120,
+      labourCurrency: 'RON',
+      status: 'PLANNED',
+      nextServiceDueDate: '2027-02-12',
+      nextServiceDueOdometer: 10000,
+      notes: 'Preserve this note',
+      partsUsed: [{ partId: statusPartId, quantity: 2 }],
+    });
+    assert.equal(plannedCreate.status, 201);
+    const createdPlanned = plannedCreate.body as Record<string, unknown>;
+    const plannedServiceId = String(createdPlanned.id);
+    assert.equal(createdPlanned.status, 'PLANNED');
+    assert.equal(createdPlanned.completedAt, null);
+
+    const inProgressCreate = await request('/api/v1/services', 'POST', `Bearer ${token}`, {
+      motorbikeId: statusBikeId,
+      serviceDate: '2026-11-13',
+      odometerReading: 5200,
+      serviceProvider: 'Moto Clinic',
+      workPerformed: 'Brake check',
+      labourCost: 80,
+      labourCurrency: 'RON',
+      status: 'IN_PROGRESS',
+    });
+    assert.equal(inProgressCreate.status, 201);
+    const inProgressServiceId = String((inProgressCreate.body as Record<string, unknown>).id);
+
+    const cancelledCreate = await request('/api/v1/services', 'POST', `Bearer ${token}`, {
+      motorbikeId: statusBikeId,
+      serviceDate: '2026-11-14',
+      odometerReading: 5200,
+      serviceProvider: 'Moto Clinic',
+      workPerformed: 'Cancelled check',
+      labourCost: 0,
+      labourCurrency: 'RON',
+      status: 'CANCELLED',
+    });
+    assert.equal(cancelledCreate.status, 201);
+    const cancelledServiceId = String((cancelledCreate.body as Record<string, unknown>).id);
+
+    const partBeforePatch = await firestore.collection('parts').doc(statusPartId).get();
+    const movementsBeforePatch = await firestore.collection('stock_movements').count().get();
+    const recordsCountBeforePatch = await firestore.collection('service_records').count().get();
+
+    // PLANNED -> COMPLETED succeeds
+    const completePlanned = await request(
+      `/api/v1/services/${plannedServiceId}/status`,
+      'PATCH',
+      `Bearer ${token}`,
+      { status: 'COMPLETED' },
+    );
+    assert.equal(completePlanned.status, 200);
+    const completedPlannedDto = completePlanned.body as Record<string, unknown>;
+    assert.equal(completedPlannedDto.status, 'COMPLETED');
+    assert.equal(typeof completedPlannedDto.completedAt, 'string');
+    assert.ok(!Number.isNaN(Date.parse(String(completedPlannedDto.completedAt))));
+    assert.equal(completedPlannedDto.serviceDate, '2026-11-12');
+    assert.equal(completedPlannedDto.nextServiceDueDate, '2027-02-12');
+    assert.equal(completedPlannedDto.nextServiceDueOdometer, 10000);
+    assert.equal(completedPlannedDto.labourCost, 120);
+    assert.equal(completedPlannedDto.partsCost, 90);
+    assert.equal(completedPlannedDto.totalCost, 210);
+    assert.equal(completedPlannedDto.notes, 'Preserve this note');
+    assert.equal((completedPlannedDto.partsUsed as unknown[]).length, 1);
+
+    // Persisted in Firestore & GET /:id
+    const fetchedPlanned = await request(`/api/v1/services/${plannedServiceId}`, 'GET', `Bearer ${token}`);
+    assert.equal(fetchedPlanned.status, 200);
+    assert.equal((fetchedPlanned.body as Record<string, unknown>).status, 'COMPLETED');
+    assert.equal((fetchedPlanned.body as Record<string, unknown>).completedAt, completedPlannedDto.completedAt);
+
+    // IN_PROGRESS -> COMPLETED succeeds
+    const completeInProgress = await request(
+      `/api/v1/services/${inProgressServiceId}/status`,
+      'PATCH',
+      `Bearer ${token}`,
+      { status: 'COMPLETED' },
+    );
+    assert.equal(completeInProgress.status, 200);
+    assert.equal((completeInProgress.body as Record<string, unknown>).status, 'COMPLETED');
+    assert.equal(typeof (completeInProgress.body as Record<string, unknown>).completedAt, 'string');
+
+    // COMPLETED -> COMPLETED rejected (400)
+    const repeatComplete = await request(
+      `/api/v1/services/${plannedServiceId}/status`,
+      'PATCH',
+      `Bearer ${token}`,
+      { status: 'COMPLETED' },
+    );
+    assert.equal(repeatComplete.status, 400);
+
+    // CANCELLED -> COMPLETED rejected (400)
+    const completeCancelled = await request(
+      `/api/v1/services/${cancelledServiceId}/status`,
+      'PATCH',
+      `Bearer ${token}`,
+      { status: 'COMPLETED' },
+    );
+    assert.equal(completeCancelled.status, 400);
+
+    // Nonexistent service ID -> 404; invalid UUID -> 400
+    const missingService = await request(
+      `/api/v1/services/${randomUUID()}/status`,
+      'PATCH',
+      `Bearer ${token}`,
+      { status: 'COMPLETED' },
+    );
+    assert.equal(missingService.status, 404);
+
+    const invalidId = await request(
+      '/api/v1/services/not-a-uuid/status',
+      'PATCH',
+      `Bearer ${token}`,
+      { status: 'COMPLETED' },
+    );
+    assert.equal(invalidId.status, 400);
+
+    // Invalid request bodies -> 400
+    for (const badBody of [
+      {},
+      { status: 'PLANNED' },
+      { status: 'CANCELLED' },
+      { status: 'DONE' },
+      { status: 'COMPLETED', extra: 1 },
+    ]) {
+      const badRes = await request(
+        `/api/v1/services/${inProgressServiceId}/status`,
+        'PATCH',
+        `Bearer ${token}`,
+        badBody,
+      );
+      assert.equal(badRes.status, 400);
+    }
+
+    // No stock quantity changes, no additional stock movements, and no extra service_records created
+    const partAfterPatch = await firestore.collection('parts').doc(statusPartId).get();
+    const movementsAfterPatch = await firestore.collection('stock_movements').count().get();
+    const recordsCountAfterPatch = await firestore.collection('service_records').count().get();
+    assert.equal(partAfterPatch.data()?.currentQuantity, partBeforePatch.data()?.currentQuantity);
+    assert.equal(movementsAfterPatch.data().count, movementsBeforePatch.data().count);
+    assert.equal(recordsCountAfterPatch.data().count, recordsCountBeforePatch.data().count);
   });
 });

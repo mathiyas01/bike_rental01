@@ -1,8 +1,9 @@
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import type { AppConfig } from './config/env.js';
 import { errorMiddleware, notFoundMiddleware } from './middleware/error.middleware.js';
-import { healthRouter } from './routes/health.routes.js';
+import { createHealthRouter } from './routes/health.routes.js';
 import { createAuthRouter } from './routes/auth.routes.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import { createRentalRouter } from './routes/rental.routes.js';
@@ -22,25 +23,40 @@ export function createApp(config: AppConfig, firestore?: Firestore) {
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', config.trustProxy ?? (config.environment === 'production' ? 1 : false));
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  }));
   app.use(cors({
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Authorization', 'Content-Disposition'],
+    credentials: false,
+    maxAge: 3600,
   }));
-  app.use(express.json({ limit: '1mb' }));
-  app.use((request, _response, next) => {
+  app.use('/api/v1', (_request, response, next) => {
+    response.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+  app.use((request, response, next) => {
     const startedAt = Date.now();
-    request.on('end', () => {
+    response.on('finish', () => {
       console.info(JSON.stringify({
         event: 'request',
         method: request.method,
         path: request.path,
-        status: _response.statusCode,
+        status: response.statusCode,
         durationMs: Date.now() - startedAt,
       }));
     });
     next();
   });
+  app.use(express.json({ limit: '1mb' }));
 
-  app.use(healthRouter);
+  app.use(createHealthRouter(firestore));
   if (firestore) {
     app.use('/api/v1/auth', createAuthRouter(firestore, config));
     app.use('/api/v1/bikes', createBikeRouter(firestore, config));

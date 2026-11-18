@@ -14,6 +14,10 @@ export interface AppConfig {
   bcryptRounds: number;
   enableDevPasswordReset: boolean;
   logLevel: string;
+  trustProxy?: boolean | number;
+  authRateLimitWindowMs?: number;
+  authRateLimitMax?: number;
+  bootstrapRateLimitMax?: number;
 }
 
 export interface EnvironmentInput {
@@ -28,6 +32,10 @@ export interface EnvironmentInput {
   BCRYPT_ROUNDS?: string;
   ENABLE_DEV_PASSWORD_RESET?: string;
   LOG_LEVEL?: string;
+  TRUST_PROXY?: string;
+  AUTH_RATE_LIMIT_WINDOW_MS?: string;
+  AUTH_RATE_LIMIT_MAX?: string;
+  BOOTSTRAP_RATE_LIMIT_MAX?: string;
 }
 
 const environments = new Set<Environment>(['development', 'test', 'production']);
@@ -80,6 +88,35 @@ export function parseEnvironment(input: EnvironmentInput): AppConfig {
     throw new Error('CORS_ORIGINS must contain at least one origin in production');
   }
 
+  const authRateLimitWindowMs = Number(input.AUTH_RATE_LIMIT_WINDOW_MS ?? '900000');
+  if (!Number.isInteger(authRateLimitWindowMs) || authRateLimitWindowMs <= 0) {
+    throw new Error('AUTH_RATE_LIMIT_WINDOW_MS must be a positive integer');
+  }
+
+  const authRateLimitMax = Number(input.AUTH_RATE_LIMIT_MAX ?? '20');
+  if (!Number.isInteger(authRateLimitMax) || authRateLimitMax <= 0) {
+    throw new Error('AUTH_RATE_LIMIT_MAX must be a positive integer');
+  }
+
+  const bootstrapRateLimitMax = Number(input.BOOTSTRAP_RATE_LIMIT_MAX ?? '10');
+  if (!Number.isInteger(bootstrapRateLimitMax) || bootstrapRateLimitMax <= 0) {
+    throw new Error('BOOTSTRAP_RATE_LIMIT_MAX must be a positive integer');
+  }
+
+  const trustProxyRaw = input.TRUST_PROXY?.trim();
+  let trustProxy: boolean | number = environment === 'production' ? 1 : false;
+  if (trustProxyRaw !== undefined && trustProxyRaw !== '') {
+    if (trustProxyRaw === 'true') trustProxy = true;
+    else if (trustProxyRaw === 'false') trustProxy = false;
+    else {
+      const parsedHops = Number(trustProxyRaw);
+      if (!Number.isInteger(parsedHops) || parsedHops < 0) {
+        throw new Error('TRUST_PROXY must be true, false, or a non-negative integer');
+      }
+      trustProxy = parsedHops;
+    }
+  }
+
   return {
     environment: environment as Environment,
     port,
@@ -96,6 +133,10 @@ export function parseEnvironment(input: EnvironmentInput): AppConfig {
       ? { firebaseAuthEmulatorHost: input.FIREBASE_AUTH_EMULATOR_HOST.trim() }
       : {}),
     logLevel: input.LOG_LEVEL?.trim() || 'info',
+    trustProxy,
+    authRateLimitWindowMs,
+    authRateLimitMax,
+    bootstrapRateLimitMax,
   };
 }
 

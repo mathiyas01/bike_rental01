@@ -37,5 +37,15 @@ export function createServicingController(service: ServicingService) {
         await service.getDueServices(request.query as Record<string, unknown>),
       );
     },
+    updateServiceStatus: async (request: AuthenticatedRequest, response: Response) => {
+      const authUser = requireAuthenticatedUser(request);
+      response.status(200).json(
+        await service.updateServiceStatus(
+          requireUuid(request.params.id, 'id'),
+          request.body,
+          authUser,
+        ),
+      );
+    },
   };
 }

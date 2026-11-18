@@ -9,6 +9,7 @@ import {
   parseDueServicesQuery,
   parseLogServiceInput,
   parseServiceSearchQuery,
+  parseUpdateServiceStatusInput,
   scale4ToJson,
   toScale4Units,
   validateServiceStatus,
@@ -186,6 +187,7 @@ test('toServiceRecordDto serializes dual bikeRegistrationNumber aliases and nume
   assert.equal(dto.nextServiceDueOdometer, 17500);
   assert.equal(dto.partsUsed.length, 1);
   assert.equal(dto.partsUsed[0]?.totalCost, 12.5625);
+  assert.equal(dto.completedAt, null);
   assert.equal(dto.createdAt, '2026-11-10T10:00:00.000Z');
 });
 
@@ -223,4 +225,26 @@ test('parseServiceSearchQuery and parseDueServicesQuery validate parameters clea
   assert.equal(parseDueServicesQuery({ asOfDate: '2026-12-31' }), '2026-12-31');
   assert.match(parseDueServicesQuery({}), /^\d{4}-\d{2}-\d{2}$/);
   assert.throws(() => parseDueServicesQuery({ asOfDate: '2026-02-29' }), ValidationError);
+});
+
+test('parseUpdateServiceStatusInput strictly validates COMPLETED status payload', () => {
+  assert.deepEqual(parseUpdateServiceStatusInput({ status: 'COMPLETED' }), {
+    status: 'COMPLETED',
+  });
+
+  for (const bad of [
+    null,
+    undefined,
+    [],
+    'COMPLETED',
+    {},
+    { status: 'PLANNED' },
+    { status: 'IN_PROGRESS' },
+    { status: 'CANCELLED' },
+    { status: 'DONE' },
+    { status: null },
+    { status: 'COMPLETED', extra: true },
+  ]) {
+    assert.throws(() => parseUpdateServiceStatusInput(bad), ValidationError);
+  }
 });

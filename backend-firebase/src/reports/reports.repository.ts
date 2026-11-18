@@ -1,13 +1,14 @@
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 import type {
   BikeDocument,
+  PaymentAllocationDocument,
   PaymentDocument,
   RentalDocument,
   ServiceRecordDocument,
   StockMovementDocument,
 } from '../domain/types.js';
 import { stockMovementFrom } from '../inventory/inventory.repository.js';
-import { paymentFrom, rentalFrom } from '../payment/payment.repository.js';
+import { allocationFrom, paymentFrom, rentalFrom } from '../payment/payment.repository.js';
 import { serviceRecordFrom, servicingBikeFrom } from '../servicing/servicing.repository.js';
 import { addDays } from '../shared/dates.js';
 import { NotFoundError, UnprocessableEntityError } from '../shared/errors.js';
@@ -18,6 +19,7 @@ export const RENTALS = 'rentals';
 export const RENTAL_CHARGES = 'rental_charges';
 export const PARTS = 'parts';
 export const PAYMENTS = 'payments';
+export const PAYMENT_ALLOCATIONS = 'payment_allocations';
 export const SERVICE_RECORDS = 'service_records';
 export const STOCK_MOVEMENTS = 'stock_movements';
 
@@ -179,5 +181,87 @@ export class ReportsRepository {
       .get();
     this.assertScanWithinBudget(snapshot.docs.length, PAYMENTS);
     return snapshot.docs.map((doc) => paymentFrom(doc.id, doc.data()));
+  }
+
+  async listRentalIdsForBike(bikeId: string): Promise<string[]> {
+    const snapshot = await this.firestore
+      .collection(RENTALS)
+      .where('bikeId', '==', bikeId)
+      .limit(this.maxScanDocs + 1)
+      .get();
+    this.assertScanWithinBudget(snapshot.docs.length, RENTALS);
+    return snapshot.docs.map((doc) => doc.id);
+  }
+
+  async listDirectPaymentsForRentals(rentalIds: string[]): Promise<PaymentDocument[]> {
+    const uniqueRentalIds = [...new Set(rentalIds)];
+    if (uniqueRentalIds.length === 0) return [];
+
+    const collected: PaymentDocument[] = [];
+    for (let offset = 0; offset < uniqueRentalIds.length; offset += 30) {
+      const chunk = uniqueRentalIds.slice(offset, offset + 30);
+      const remainingBudget = this.maxScanDocs - collected.length;
+      const snapshot = await this.firestore
+        .collection(PAYMENTS)
+        .where('rentalId', 'in', chunk)
+        .limit(remainingBudget + 1)
+        .get();
+      this.assertScanWithinBudget(collected.length + snapshot.docs.length, PAYMENTS);
+      for (const doc of snapshot.docs) {
+        collected.push(paymentFrom(doc.id, doc.data()));
+      }
+    }
+    return collected;
+  }
+
+  async listChargeIdsForBike(bikeId: string): Promise<string[]> {
+    const snapshot = await this.firestore
+      .collection(RENTAL_CHARGES)
+      .where('bikeId', '==', bikeId)
+      .limit(this.maxScanDocs + 1)
+      .get();
+    this.assertScanWithinBudget(snapshot.docs.length, RENTAL_CHARGES);
+    return snapshot.docs.map((doc) => doc.id);
+  }
+
+  async listAllocationsForCharges(chargeIds: string[]): Promise<PaymentAllocationDocument[]> {
+    const uniqueChargeIds = [...new Set(chargeIds)];
+    if (uniqueChargeIds.length === 0) return [];
+
+    const collected: PaymentAllocationDocument[] = [];
+    for (let offset = 0; offset < uniqueChargeIds.length; offset += 30) {
+      const chunk = uniqueChargeIds.slice(offset, offset + 30);
+      const remainingBudget = this.maxScanDocs - collected.length;
+      const snapshot = await this.firestore
+        .collection(PAYMENT_ALLOCATIONS)
+        .where('rentalChargeId', 'in', chunk)
+        .limit(remainingBudget + 1)
+        .get();
+      this.assertScanWithinBudget(collected.length + snapshot.docs.length, PAYMENT_ALLOCATIONS);
+      for (const doc of snapshot.docs) {
+        collected.push(allocationFrom(doc.id, doc.data()));
+      }
+    }
+    return collected;
+  }
+
+  async getPaymentsByIds(paymentIds: string[]): Promise<Map<string, PaymentDocument>> {
+    const uniqueIds = [...new Set(paymentIds)];
+    this.assertScanWithinBudget(uniqueIds.length, PAYMENTS);
+    const result = new Map<string, PaymentDocument>();
+    if (uniqueIds.length === 0) return result;
+
+    for (let offset = 0; offset < uniqueIds.length; offset += 100) {
+      const refs = uniqueIds
+        .slice(offset, offset + 100)
+        .map((id) => this.firestore.collection(PAYMENTS).doc(id));
+      const snaps = await this.firestore.getAll(...refs);
+      for (const snap of snaps) {
+        if (snap.exists && snap.data()) {
+          result.set(snap.id, paymentFrom(snap.id, snap.data()!));
+        }
+      }
+    }
+    return result;
   }
 }

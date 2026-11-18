@@ -45,10 +45,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   Future<void> loadPayments() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final queryParams = <String, dynamic>{
-        'page': 0,
-        'size': 50,
-      };
+      final queryParams = <String, dynamic>{'page': 0, 'size': 50};
       if (state.filterCurrency != null) {
         queryParams['currency'] = state.filterCurrency;
       }
@@ -64,33 +61,21 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       final List content = response.data['content'] ?? [];
       final payments = content.map((e) => Payment.fromJson(e)).toList();
 
-      state = state.copyWith(
-        isLoading: false,
-        payments: payments,
-      );
+      state = state.copyWith(isLoading: false, payments: payments);
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   void setFilter({String? currency, String? status}) {
-    state = state.copyWith(
-      filterCurrency: currency,
-      filterStatus: status,
-    );
+    state = state.copyWith(filterCurrency: currency, filterStatus: status);
     loadPayments();
   }
 
   Future<bool> recordPayment(Map<String, dynamic> data) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _apiClient.dio.post(
-        ApiEndpoints.payments,
-        data: data,
-      );
+      await _apiClient.dio.post(ApiEndpoints.payments, data: data);
       await loadPayments();
       return true;
     } catch (e) {
@@ -104,7 +89,7 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
     try {
       await _apiClient.dio.post(
         '${ApiEndpoints.payments}/$paymentId/reverse',
-        data: {'reversalReason': reason},
+        data: {'reason': reason},
       );
       await loadPayments();
       return true;
@@ -115,7 +100,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }
 }
 
-final paymentProvider = StateNotifierProvider<PaymentNotifier, PaymentState>((ref) {
+final paymentProvider = StateNotifierProvider<PaymentNotifier, PaymentState>((
+  ref,
+) {
   final apiClient = ref.watch(apiClientProvider);
   return PaymentNotifier(apiClient);
 });

@@ -1,7 +1,7 @@
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 import type { AppConfig } from '../config/env.js';
 import { BusinessError, ConflictError, NotFoundError, OperationalError, ValidationError } from '../shared/errors.js';
-import { addDays, isBefore, parseDate, todayUtc } from '../shared/dates.js';
+import { addDays, isBefore, parseDate, todayBucharest } from '../shared/dates.js';
 import {
   addMoney,
   maxZero,
@@ -25,6 +25,7 @@ import { RentalRepository } from './rental.repository.js';
 const currencies = new Set<Currency>(['RON', 'EUR', 'USD']);
 const rentalStatuses = new Set<RentalStatus>(['ACTIVE', 'CLOSED', 'CANCELLED']);
 const chargeStatuses = new Set<ChargeStatus>(['UNPAID', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']);
+export const MAX_ATOMIC_GENERATED_CHARGES = 499;
 
 export interface RentalDto {
   id: string;
@@ -126,9 +127,20 @@ function id(body: Record<string, unknown>, field: string): string {
 
 function createInput(body: Record<string, unknown>): CreateInput {
   const currencyValue = currency(body.currency, 'currency');
-  const depositCurrency = body.depositCurrency === undefined || body.depositCurrency === null
-    ? currencyValue
-    : currency(body.depositCurrency, 'depositCurrency');
+  const rawDepositCurrency = body.depositCurrency;
+  const depositCurrency =
+    rawDepositCurrency === undefined ||
+    rawDepositCurrency === null ||
+    (typeof rawDepositCurrency === 'string' && rawDepositCurrency.trim() === '')
+      ? currencyValue
+      : currency(rawDepositCurrency, 'depositCurrency');
+  const rawDepositAmount = body.depositAmount;
+  const depositAmount =
+    rawDepositAmount === undefined ||
+    rawDepositAmount === null ||
+    (typeof rawDepositAmount === 'string' && rawDepositAmount.trim() === '')
+      ? '0.00'
+      : amount(rawDepositAmount, 'depositAmount', 0);
   return {
     customerId: id(body, 'customerId'),
     motorbikeId: id(body, 'motorbikeId'),
@@ -141,9 +153,7 @@ function createInput(body: Record<string, unknown>): CreateInput {
     plannedEndDate: optionalDate(body, 'plannedEndDate'),
     weeklyRate: amount(body.weeklyRate, 'weeklyRate', 0.01),
     currency: currencyValue,
-    depositAmount: body.depositAmount === undefined || body.depositAmount === null
-      ? '0.00'
-      : amount(body.depositAmount, 'depositAmount', 0),
+    depositAmount,
     depositCurrency,
     scheduleAnchorDay: body.scheduleAnchorDay === undefined || body.scheduleAnchorDay === null
       ? 'START_DAY'
@@ -225,9 +235,6 @@ export class RentalService {
 
   async create(body: Record<string, unknown>): Promise<RentalDto> {
     const input = createInput(body);
-    if (input.plannedEndDate && isBefore(input.plannedEndDate, input.startDate)) {
-      throw new BusinessError('Planned end date cannot be earlier than rental start date');
-    }
     let result!: RentalDocument;
     await this.firestore.runTransaction(async (transaction) => {
       const customerSnapshot = await transaction.get(this.repository.customerReference(input.customerId));
@@ -435,30 +442,68 @@ export class RentalService {
     return toPage(result.items.map(rentalDto), page, result.totalElements);
   }
 
+  private async readNextChargeCursor(
+    transaction: FirebaseFirestore.Transaction,
+    rentalId: string,
+    rental: RentalDocument,
+  ): Promise<{ sequence: number; periodStart: string; cursorExists: boolean }> {
+    const cursorSnapshot = await transaction.get(this.repository.cursorReference(rentalId));
+    if (cursorSnapshot.exists) {
+      return {
+        sequence: Number(cursorSnapshot.data()?.nextSequence),
+        periodStart: String(cursorSnapshot.data()?.nextPeriodStart),
+        cursorExists: true,
+      };
+    }
+    const latestSnapshot = await transaction.get(
+      this.firestore.collection('rental_charges')
+        .where('rentalId', '==', rentalId)
+        .orderBy('chargeSequence', 'desc')
+        .limit(1),
+    );
+    const latest = latestSnapshot.docs[0];
+    const latestCharge = latest ? this.repository.readCharge(latest) : undefined;
+    return {
+      sequence: latestCharge ? latestCharge.chargeSequence + 1 : 1,
+      periodStart: latestCharge ? addDays(latestCharge.periodEndDate, 1) : rental.startDate,
+      cursorExists: false,
+    };
+  }
+
+  private buildRecurringCharge(
+    rentalId: string,
+    rental: RentalDocument,
+    sequence: number,
+    periodStart: string,
+    periodEnd: string,
+    now: Timestamp,
+  ): ChargeDocument {
+    const chargeReference = this.repository.chargeReference(rentalId, sequence);
+    return {
+      id: chargeReference.id,
+      rentalId,
+      customerId: rental.customerId,
+      bikeId: rental.bikeId,
+      chargeSequence: sequence,
+      periodStartDate: periodStart,
+      periodEndDate: periodEnd,
+      dueDate: periodStart,
+      amount: rental.weeklyRate,
+      currency: rental.currency,
+      status: 'UNPAID',
+      paidAmount: '0.00',
+      remainingAmount: rental.weeklyRate,
+      notes: `Recurring weekly charge #${sequence}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
   async generateNext(rentalId: string): Promise<{ dto: RentalChargeDto; created: boolean }> {
-    let result!: ChargeDocument;
-    let created = false;
-    await this.firestore.runTransaction(async (transaction) => {
+    const { result, created } = await this.firestore.runTransaction(async (transaction) => {
       const rentalSnapshot = await transaction.get(this.repository.rentalReference(rentalId));
       const rental = this.repository.readRental(rentalSnapshot);
-      const cursorSnapshot = await transaction.get(this.repository.cursorReference(rentalId));
-      let sequence: number;
-      let periodStart: string;
-      if (cursorSnapshot.exists) {
-        sequence = Number(cursorSnapshot.data()?.nextSequence);
-        periodStart = String(cursorSnapshot.data()?.nextPeriodStart);
-      } else {
-        const latestSnapshot = await transaction.get(
-          this.firestore.collection('rental_charges')
-            .where('rentalId', '==', rentalId)
-            .orderBy('chargeSequence', 'desc')
-            .limit(1),
-        );
-        const latest = latestSnapshot.docs[0];
-        const latestCharge = latest ? this.repository.readCharge(latest) : undefined;
-        sequence = latestCharge ? latestCharge.chargeSequence + 1 : 1;
-        periodStart = latestCharge ? addDays(latestCharge.periodEndDate, 1) : rental.startDate;
-      }
+      const { sequence, periodStart } = await this.readNextChargeCursor(transaction, rentalId, rental);
       if (rental.status === 'CANCELLED') {
         throw new BusinessError('Cannot generate charges for a cancelled rental');
       }
@@ -468,36 +513,18 @@ export class RentalService {
       const chargeReference = this.repository.chargeReference(rentalId, sequence);
       const existing = await transaction.get(chargeReference);
       if (existing.exists) {
-        result = this.repository.readCharge(existing);
-        return;
+        return { result: this.repository.readCharge(existing), created: false };
       }
       const period = RentalRepository.nextPeriod(periodStart);
       const now = RentalRepository.timestamp();
-      result = {
-        id: chargeReference.id,
-        rentalId,
-        customerId: rental.customerId,
-        bikeId: rental.bikeId,
-        chargeSequence: sequence,
-        periodStartDate: periodStart,
-        periodEndDate: period.end,
-        dueDate: periodStart,
-        amount: rental.weeklyRate,
-        currency: rental.currency,
-        status: 'UNPAID',
-        paidAmount: '0.00',
-        remainingAmount: rental.weeklyRate,
-        notes: `Recurring weekly charge #${sequence}`,
-        createdAt: now,
-        updatedAt: now,
-      };
-      transaction.create(chargeReference, result);
+      const charge = this.buildRecurringCharge(rentalId, rental, sequence, periodStart, period.end, now);
+      transaction.create(chargeReference, charge);
       transaction.set(this.repository.cursorReference(rentalId), {
         nextSequence: sequence + 1,
         nextPeriodStart: period.next,
         updatedAt: now,
       });
-      created = true;
+      return { result: charge, created: true };
     });
     return { dto: chargeDto(result, result.paidAmount), created };
   }
@@ -508,24 +535,79 @@ export class RentalService {
     catch (error) {
       throw new ValidationError([{ field: 'targetDate', rejectedValue: targetDateValue ?? null, message: String(error).replace(/^Error: /, '') }]);
     }
-    const generated: RentalChargeDto[] = [];
-    for (let count = 0; count < 1000; count += 1) {
-      const rental = this.repository.readRental(await this.repository.rentalReference(rentalId).get());
-      const cursor = await this.repository.cursorReference(rentalId).get();
-      const nextStart = cursor.exists ? String(cursor.data()?.nextPeriodStart) : rental.startDate;
-      if (isBefore(targetDate, nextStart) || (rental.actualClosedDate && isBefore(rental.actualClosedDate, nextStart))) break;
-      const next = await this.generateNext(rentalId);
-      if (!next.created) break;
-      generated.push(next.dto);
-    }
-    const rental = this.repository.readRental(await this.repository.rentalReference(rentalId).get());
-    const cursor = await this.repository.cursorReference(rentalId).get();
-    const nextStart = cursor.exists ? String(cursor.data()?.nextPeriodStart) : rental.startDate;
-    if (!isBefore(targetDate, nextStart) &&
-        !(rental.actualClosedDate && isBefore(rental.actualClosedDate, nextStart))) {
-      throw new OperationalError('Requested charge generation exceeds the 1,000-charge limit');
-    }
-    return generated;
+    const generated = await this.firestore.runTransaction(async (transaction) => {
+      const attemptGenerated: ChargeDocument[] = [];
+      const rentalSnapshot = await transaction.get(this.repository.rentalReference(rentalId));
+      const rental = this.repository.readRental(rentalSnapshot);
+      const cursor = await this.readNextChargeCursor(transaction, rentalId, rental);
+
+      const planned: Array<{
+        sequence: number;
+        periodStart: string;
+        periodEnd: string;
+        nextPeriodStart: string;
+        reference: FirebaseFirestore.DocumentReference;
+      }> = [];
+      let nextSequence = cursor.sequence;
+      let nextPeriodStart = cursor.periodStart;
+
+      while (!isBefore(targetDate, nextPeriodStart) &&
+             !(rental.actualClosedDate && isBefore(rental.actualClosedDate, nextPeriodStart))) {
+        if (rental.status === 'CANCELLED') {
+          throw new BusinessError('Cannot generate charges for a cancelled rental');
+        }
+        if (planned.length >= MAX_ATOMIC_GENERATED_CHARGES) {
+          throw new OperationalError(
+            `Requested charge generation exceeds the ${MAX_ATOMIC_GENERATED_CHARGES}-charge atomic transaction limit`,
+          );
+        }
+        const period = RentalRepository.nextPeriod(nextPeriodStart);
+        planned.push({
+          sequence: nextSequence,
+          periodStart: nextPeriodStart,
+          periodEnd: period.end,
+          nextPeriodStart: period.next,
+          reference: this.repository.chargeReference(rentalId, nextSequence),
+        });
+        nextSequence += 1;
+        nextPeriodStart = period.next;
+      }
+
+      if (planned.length === 0) {
+        return attemptGenerated;
+      }
+
+      const existingSnapshots = await transaction.getAll(...planned.map((item) => item.reference));
+      const now = RentalRepository.timestamp();
+
+      for (let index = 0; index < planned.length; index += 1) {
+        if (existingSnapshots[index]!.exists) {
+          continue;
+        }
+        const item = planned[index]!;
+        const charge = this.buildRecurringCharge(
+          rentalId,
+          rental,
+          item.sequence,
+          item.periodStart,
+          item.periodEnd,
+          now,
+        );
+        transaction.create(item.reference, charge);
+        attemptGenerated.push(charge);
+      }
+
+      if (attemptGenerated.length > 0 || !cursor.cursorExists) {
+        const last = planned[planned.length - 1]!;
+        transaction.set(this.repository.cursorReference(rentalId), {
+          nextSequence: last.sequence + 1,
+          nextPeriodStart: last.nextPeriodStart,
+          updatedAt: now,
+        });
+      }
+      return attemptGenerated;
+    });
+    return generated.map((charge) => chargeDto(charge, charge.paidAmount));
   }
 
   async chargesForRental(rentalId: string): Promise<RentalChargeDto[]> {
@@ -538,7 +620,7 @@ export class RentalService {
   }
 
   async dueCharges(asOfDateValue: unknown): Promise<RentalChargeDto[]> {
-    let asOfDate = todayUtc();
+    let asOfDate = todayBucharest();
     if (asOfDateValue !== undefined) {
       try { asOfDate = parseDate(asOfDateValue, 'asOfDate'); }
       catch (error) {

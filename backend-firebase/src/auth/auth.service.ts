@@ -85,7 +85,7 @@ export class AuthService {
     const password = requireString(body, 'password', 'Password is required');
     validatePassword(password, 8);
     const fullName = requireString(body, 'fullName', 'Full name is required');
-    const preferredLanguage = body.preferredLanguage === undefined
+    const preferredLanguage = body.preferredLanguage === undefined || body.preferredLanguage === null
       ? 'en'
       : requireString(body, 'preferredLanguage', 'Preferred language is required');
     if (!['en', 'ro'].includes(preferredLanguage)) {

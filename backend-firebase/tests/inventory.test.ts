@@ -158,11 +158,18 @@ test('Stage C5.1 Inventory 15-route auth matrix & ROLE_CUSTOMER parity (Firestor
   const { firestore } = initializeFirebase(config);
   await clearCollections(firestore);
 
+  const ownerUserId = randomUUID();
   const customerUserId = randomUUID();
   const revokedUserId = randomUUID();
   const inactiveUserId = randomUUID();
   const missingUserId = randomUUID();
 
+  await seedBaseUser(firestore, {
+    id: ownerUserId,
+    email: 'owner-auth@example.com',
+    fullName: 'Owner User',
+    role: 'ROLE_OWNER',
+  });
   await seedBaseUser(firestore, {
     id: customerUserId,
     email: 'customer@example.com',
@@ -185,6 +192,7 @@ test('Stage C5.1 Inventory 15-route auth matrix & ROLE_CUSTOMER parity (Firestor
     isActive: false,
   });
 
+  const ownerToken = makeToken(ownerUserId, 'owner-auth@example.com', 'ROLE_OWNER');
   const customerToken = makeToken(customerUserId, 'customer@example.com', 'ROLE_CUSTOMER');
   const expiredToken = makeToken(customerUserId, 'customer@example.com', 'ROLE_CUSTOMER', 0, {
     expiresInSeconds: -10,
@@ -243,33 +251,42 @@ test('Stage C5.1 Inventory 15-route auth matrix & ROLE_CUSTOMER parity (Firestor
       }
     }
 
-    // Exercise all 15 routes with an authenticated ROLE_CUSTOMER token (must never get 403).
+    // Stage C8.4.3.1: ROLE_CUSTOMER receives 403 FORBIDDEN on all 15 inventory routes (with zero writes),
+    // while ROLE_OWNER succeeds across all 15 routes.
     const customerAuth = `Bearer ${customerToken}`;
+    const ownerAuth = `Bearer ${ownerToken}`;
+    const beforeForbiddenCounts = await snapshotCounts(firestore);
+    for (const route of allRoutes) {
+      const denied = await request(route.path, route.method, customerAuth, route.body);
+      assert.equal(denied.status, 403, `${route.method} ${route.path} must deny ROLE_CUSTOMER with 403`);
+      assert.equal((denied.body as Record<string, unknown>).error, 'FORBIDDEN');
+    }
+    assert.deepEqual(await snapshotCounts(firestore), beforeForbiddenCounts, '403 rejections must perform zero writes');
 
     // Route 48: POST /api/v1/suppliers
-    const supCreate = await request('/api/v1/suppliers', 'POST', customerAuth, {
-      name: 'Customer Allowed Supplier',
+    const supCreate = await request('/api/v1/suppliers', 'POST', ownerAuth, {
+      name: 'Owner Allowed Supplier',
     });
     assert.equal(supCreate.status, 201);
     const supplierId = String((supCreate.body as Record<string, unknown>).id);
 
     // Route 49: GET /api/v1/suppliers
-    const supList = await request('/api/v1/suppliers', 'GET', customerAuth);
+    const supList = await request('/api/v1/suppliers', 'GET', ownerAuth);
     assert.equal(supList.status, 200);
 
     // Route 50: GET /api/v1/suppliers/{id}
-    const supGet = await request(`/api/v1/suppliers/${supplierId}`, 'GET', customerAuth);
+    const supGet = await request(`/api/v1/suppliers/${supplierId}`, 'GET', ownerAuth);
     assert.equal(supGet.status, 200);
 
     // Route 51 & 52: archive/unarchive supplier
-    const supArchive = await request(`/api/v1/suppliers/${supplierId}/archive`, 'POST', customerAuth);
+    const supArchive = await request(`/api/v1/suppliers/${supplierId}/archive`, 'POST', ownerAuth);
     assert.equal(supArchive.status, 200);
-    const supUnarchive = await request(`/api/v1/suppliers/${supplierId}/unarchive`, 'POST', customerAuth);
+    const supUnarchive = await request(`/api/v1/suppliers/${supplierId}/unarchive`, 'POST', ownerAuth);
     assert.equal(supUnarchive.status, 200);
 
     // Route 38: POST /api/v1/parts
-    const partCreate = await request('/api/v1/parts', 'POST', customerAuth, {
-      partCode: 'cust-01',
+    const partCreate = await request('/api/v1/parts', 'POST', ownerAuth, {
+      partCode: 'own-01',
       name: 'Chain Lube',
       category: 'maintenance',
       initialQuantity: 5,
@@ -279,7 +296,7 @@ test('Stage C5.1 Inventory 15-route auth matrix & ROLE_CUSTOMER parity (Firestor
     const partId = String((partCreate.body as Record<string, unknown>).id);
 
     // Route 39: PUT /api/v1/parts/{id}
-    const partUpdate = await request(`/api/v1/parts/${partId}`, 'PUT', customerAuth, {
+    const partUpdate = await request(`/api/v1/parts/${partId}`, 'PUT', ownerAuth, {
       name: 'Chain Lube Pro',
       category: 'maintenance',
       unitOfMeasure: 'CAN',
@@ -290,19 +307,19 @@ test('Stage C5.1 Inventory 15-route auth matrix & ROLE_CUSTOMER parity (Firestor
     assert.equal(partUpdate.status, 200);
 
     // Route 40: GET /api/v1/parts/{id}
-    const partGet = await request(`/api/v1/parts/${partId}`, 'GET', customerAuth);
+    const partGet = await request(`/api/v1/parts/${partId}`, 'GET', ownerAuth);
     assert.equal(partGet.status, 200);
 
     // Route 41: GET /api/v1/parts
-    const partList = await request('/api/v1/parts', 'GET', customerAuth);
+    const partList = await request('/api/v1/parts', 'GET', ownerAuth);
     assert.equal(partList.status, 200);
 
     // Route 42: GET /api/v1/parts/low-stock
-    const lowStock = await request('/api/v1/parts/low-stock', 'GET', customerAuth);
+    const lowStock = await request('/api/v1/parts/low-stock', 'GET', ownerAuth);
     assert.equal(lowStock.status, 200);
 
     // Route 45: POST /api/v1/stock-movements
-    const movCreate = await request('/api/v1/stock-movements', 'POST', customerAuth, {
+    const movCreate = await request('/api/v1/stock-movements', 'POST', ownerAuth, {
       partId,
       quantity: 1,
       movementType: 'STOCK_IN',
@@ -310,17 +327,17 @@ test('Stage C5.1 Inventory 15-route auth matrix & ROLE_CUSTOMER parity (Firestor
     assert.equal(movCreate.status, 201);
 
     // Route 46: GET /api/v1/stock-movements/part/{partId}
-    const movByPart = await request(`/api/v1/stock-movements/part/${partId}`, 'GET', customerAuth);
+    const movByPart = await request(`/api/v1/stock-movements/part/${partId}`, 'GET', ownerAuth);
     assert.equal(movByPart.status, 200);
 
     // Route 47: GET /api/v1/stock-movements
-    const movSearch = await request('/api/v1/stock-movements', 'GET', customerAuth);
+    const movSearch = await request('/api/v1/stock-movements', 'GET', ownerAuth);
     assert.equal(movSearch.status, 200);
 
     // Route 43 & 44: archive/unarchive part
-    const partArchive = await request(`/api/v1/parts/${partId}/archive`, 'POST', customerAuth);
+    const partArchive = await request(`/api/v1/parts/${partId}/archive`, 'POST', ownerAuth);
     assert.equal(partArchive.status, 200);
-    const partUnarchive = await request(`/api/v1/parts/${partId}/unarchive`, 'POST', customerAuth);
+    const partUnarchive = await request(`/api/v1/parts/${partId}/unarchive`, 'POST', ownerAuth);
     assert.equal(partUnarchive.status, 200);
   });
 
@@ -399,7 +416,11 @@ test('Stage C5.1 Parts lifecycle, low-stock numeric order, filtering, and suppli
       409,
     );
 
-    // 2. Supplier filtering & search across all 5 fields
+    // 2. Supplier filtering, default active-only, includeArchived, active filter, sort=active & search across all 5 fields
+    assert.equal(
+      ((await request('/api/v1/suppliers', 'GET', authHeader)).body as Record<string, unknown>).totalElements,
+      1,
+    );
     assert.equal(
       ((await request('/api/v1/suppliers?includeArchived=false', 'GET', authHeader)).body as Record<string, unknown>).totalElements,
       1,
@@ -407,6 +428,27 @@ test('Stage C5.1 Parts lifecycle, low-stock numeric order, filtering, and suppli
     assert.equal(
       ((await request('/api/v1/suppliers?includeArchived=true', 'GET', authHeader)).body as Record<string, unknown>).totalElements,
       2,
+    );
+    assert.equal(
+      ((await request('/api/v1/suppliers?active=true', 'GET', authHeader)).body as Record<string, unknown>).totalElements,
+      1,
+    );
+    assert.equal(
+      ((await request('/api/v1/suppliers?active=false', 'GET', authHeader)).body as Record<string, unknown>).totalElements,
+      1,
+    );
+    assert.equal((await request('/api/v1/suppliers?active=invalid', 'GET', authHeader)).status, 400);
+    const supSortAsc = await request('/api/v1/suppliers?includeArchived=true&sort=active,ASC', 'GET', authHeader);
+    assert.equal(supSortAsc.status, 200);
+    assert.deepEqual(
+      ((supSortAsc.body as Record<string, unknown>).content as Array<Record<string, unknown>>).map((s) => s.active),
+      [false, true],
+    );
+    const supSortDesc = await request('/api/v1/suppliers?includeArchived=true&sort=active,DESC', 'GET', authHeader);
+    assert.equal(supSortDesc.status, 200);
+    assert.deepEqual(
+      ((supSortDesc.body as Record<string, unknown>).content as Array<Record<string, unknown>>).map((s) => s.active),
+      [true, false],
     );
     for (const term of ['acme', 'elena', '22111', 'no-at-sign', 'ro9988']) {
       const searchRes = await request(`/api/v1/suppliers?search=${encodeURIComponent(term)}`, 'GET', authHeader);
@@ -552,15 +594,44 @@ test('Stage C5.1 Parts lifecycle, low-stock numeric order, filtering, and suppli
       ((await request('/api/v1/parts/low-stock', 'GET', authHeader)).body as unknown[]).length,
       1, // Only BRK-01 now (ENG-10 updated reorder=5, CHN-02 archived)
     );
-    // Archived part can still be updated per Java PartService.updatePart
+    // Archived part can still be updated per Java PartService.updatePart (preserving unitOfMeasure casing)
     const editArchived = await request(`/api/v1/parts/${partC.id}`, 'PUT', authHeader, {
       name: 'Drive Chain Heavy',
       category: 'drivetrain',
+      unitOfMeasure: 'pcs',
       minReorderLevel: 15,
       defaultUnitCost: 50,
       defaultSupplierId: null,
     });
     assert.equal(editArchived.status, 200);
+    assert.equal((editArchived.body as Record<string, unknown>).unitOfMeasure, 'pcs');
+
+    // Stage C8.4.2: default active-only, includeArchived, active filter & sort=active compatibility on GET /parts
+    assert.equal(
+      ((await request('/api/v1/parts', 'GET', authHeader)).body as Record<string, unknown>).totalElements,
+      3,
+    );
+    assert.equal(
+      ((await request('/api/v1/parts?includeArchived=false', 'GET', authHeader)).body as Record<string, unknown>).totalElements,
+      3,
+    );
+    const partsSortActiveAsc = await request('/api/v1/parts?includeArchived=true&sort=active,ASC', 'GET', authHeader);
+    assert.equal(partsSortActiveAsc.status, 200);
+    assert.equal((partsSortActiveAsc.body as Record<string, unknown>).totalElements, 4);
+    assert.equal(
+      ((partsSortActiveAsc.body as Record<string, unknown>).content as Array<Record<string, unknown>>)[0]?.active,
+      false,
+    );
+    const activeParts = await request('/api/v1/parts?active=true&sort=active,ASC', 'GET', authHeader);
+    assert.equal(activeParts.status, 200);
+    assert.equal((activeParts.body as Record<string, unknown>).totalElements, 3);
+    const inactiveParts = await request('/api/v1/parts?active=false&sort=active,DESC', 'GET', authHeader);
+    assert.equal(inactiveParts.status, 200);
+    assert.equal((inactiveParts.body as Record<string, unknown>).totalElements, 1);
+    assert.equal(
+      (await request('/api/v1/parts?active=yes', 'GET', authHeader)).status,
+      400,
+    );
     assert.equal(
       (await request('/api/v1/parts', 'POST', authHeader, {
         partCode: 'chn-02',
@@ -706,19 +777,29 @@ test('Stage C5.1 Stock movements, currency/cost fallbacks, overdraft protection,
       })).status,
       400,
     );
+    const purchaseAlias = await request('/api/v1/stock-movements', 'POST', authHeader, {
+      partId,
+      quantity: 1,
+      movementType: 'PURCHASE',
+    });
+    assert.equal(purchaseAlias.status, 201);
+    assert.equal((purchaseAlias.body as Record<string, unknown>).movementType, 'STOCK_IN');
+    assert.equal((purchaseAlias.body as Record<string, unknown>).quantityDelta, 1);
+
+    const usageAlias = await request('/api/v1/stock-movements', 'POST', authHeader, {
+      partId,
+      quantity: 1,
+      movementType: 'USAGE_NON_SERVICE',
+    });
+    assert.equal(usageAlias.status, 201);
+    assert.equal((usageAlias.body as Record<string, unknown>).movementType, 'STOCK_OUT');
+    assert.equal((usageAlias.body as Record<string, unknown>).quantityDelta, -1);
+
     assert.equal(
       (await request('/api/v1/stock-movements', 'POST', authHeader, {
         partId,
         quantity: 1,
-        movementType: 'PURCHASE',
-      })).status,
-      400,
-    );
-    assert.equal(
-      (await request('/api/v1/stock-movements', 'POST', authHeader, {
-        partId,
-        quantity: 1,
-        movementType: 'USAGE_NON_SERVICE',
+        movementType: 'UNKNOWN_MOVEMENT',
       })).status,
       400,
     );
@@ -743,10 +824,24 @@ test('Stage C5.1 Stock movements, currency/cost fallbacks, overdraft protection,
     const historyRes = await request(`/api/v1/stock-movements/part/${partId}`, 'GET', authHeader);
     assert.equal(historyRes.status, 200);
     const history = historyRes.body as Array<Record<string, unknown>>;
-    assert.equal(history.length, 6); // initial + STOCK_IN + RETURN + SERVICE_USAGE + ADJUSTMENT + REVERSAL
+    assert.equal(history.length, 8); // initial + STOCK_IN + RETURN + SERVICE_USAGE + PURCHASE(STOCK_IN) + USAGE_NON_SERVICE(STOCK_OUT) + ADJUSTMENT + REVERSAL
     for (let i = 1; i < history.length; i += 1) {
       assert.ok(String(history[i - 1]!.createdAt) >= String(history[i]!.createdAt));
     }
+
+    // Verify stock balance equals exact sum of all 8 movement deltas
+    const partAfterMovements = await request(`/api/v1/parts/${partId}`, 'GET', authHeader);
+    assert.equal(partAfterMovements.status, 200);
+    const ledgerSum = history.reduce((acc, item) => acc + Math.round(Number(item.quantityDelta) * 100), 0);
+    assert.equal(Math.round(Number((partAfterMovements.body as Record<string, unknown>).currentQuantity) * 100), ledgerSum);
+
+    // Alias filter parity: PURCHASE -> STOCK_IN, USAGE_NON_SERVICE -> STOCK_OUT
+    const purchaseFilter = await request(`/api/v1/stock-movements?partId=${partId}&type=PURCHASE`, 'GET', authHeader);
+    assert.equal(purchaseFilter.status, 200);
+    assert.equal((purchaseFilter.body as Record<string, unknown>).totalElements, 3);
+    const usageFilter = await request(`/api/v1/stock-movements?partId=${partId}&type=USAGE_NON_SERVICE`, 'GET', authHeader);
+    assert.equal(usageFilter.status, 200);
+    assert.equal((usageFilter.body as Record<string, unknown>).totalElements, 1);
 
     const emptyHistory = await request(`/api/v1/stock-movements/part/${randomUUID()}`, 'GET', authHeader);
     assert.equal(emptyHistory.status, 200);
@@ -874,12 +969,14 @@ test('Stage C5.1 Concurrency contention, 422 scan cap, and Stage C6 servicing de
       (error: unknown) => error instanceof BusinessError && error.status === 400,
     );
 
-    // Valid duplicate lines 0.40 + 0.30 = 0.70 against 1.00 -> leaves 0.30 and emits 2 SERVICE_USAGE rows
+    // Valid duplicate lines 0.20 + 0.20 + 0.30 = 0.70 against 1.00 -> leaves 0.30 and emits 3 SERVICE_USAGE rows
+    // Verifies all 3 currency cases: omitted -> 'RON', explicit null -> part.costCurrency ('EUR'), explicit 'USD' -> 'USD'
     const preparedMovements = await firestore.runTransaction(async (tx) => {
       const plan = await service.prepareServicePartDeductionsInTx(tx, {
         rawPartsUsed: [
-          { partId, quantity: '0.40' },
-          { partId, quantity: '0.30', unitCost: '19.00', currency: 'RON' },
+          { partId, quantity: '0.20' },
+          { partId, quantity: '0.20', currency: null },
+          { partId, quantity: '0.30', unitCost: '19.00', currency: 'USD' },
         ],
         serviceRecordId,
         bikeRegistrationNumber: 'B-99-XYZ',
@@ -890,17 +987,19 @@ test('Stage C5.1 Concurrency contention, 422 scan cap, and Stage C6 servicing de
       plan.applyWrites();
       return plan.movements;
     });
-    assert.equal(preparedMovements.length, 2);
+    assert.equal(preparedMovements.length, 3);
     assert.equal(preparedMovements[0]!.unitCost, '15.00');
-    assert.equal(preparedMovements[0]!.currency, 'EUR');
-    assert.equal(preparedMovements[1]!.unitCost, '19.00');
-    assert.equal(preparedMovements[1]!.currency, 'RON');
+    assert.equal(preparedMovements[0]!.currency, 'RON');
+    assert.equal(preparedMovements[1]!.unitCost, '15.00');
+    assert.equal(preparedMovements[1]!.currency, 'EUR');
+    assert.equal(preparedMovements[2]!.unitCost, '19.00');
+    assert.equal(preparedMovements[2]!.currency, 'USD');
 
     const partAfterService = (await request(`/api/v1/parts/${partId}`, 'GET', authHeader)).body as Record<string, unknown>;
     assert.equal(partAfterService.currentQuantity, 0.3);
 
     const svcMovements = (await request(`/api/v1/stock-movements?partId=${partId}&type=SERVICE_USAGE`, 'GET', authHeader)).body as Record<string, unknown>;
-    assert.equal(svcMovements.totalElements, 2);
+    assert.equal(svcMovements.totalElements, 3);
 
     // 5. Seed up to 1001 parts & 1001 suppliers to verify MAX_SEARCH_SCAN_DOCS = 1000 returns 422 while non-search paging succeeds
     const existingPartsCount = (await firestore.collection('parts').count().get()).data().count;
