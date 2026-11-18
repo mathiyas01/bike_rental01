@@ -1,3 +1,4 @@
+import './config/server-env.js';
 import { createApp } from './app.js';
 import { initializeFirebase } from './config/firebase.js';
 import { loadConfig } from './config/env.js';

@@ -25,6 +25,8 @@ export interface EnvironmentInput {
   PORT?: string;
   CORS_ORIGINS?: string;
   FIREBASE_PROJECT_ID?: string;
+  FIREBASE_CONFIG?: string;
+  GCLOUD_PROJECT?: string;
   FIRESTORE_EMULATOR_HOST?: string;
   FIREBASE_AUTH_EMULATOR_HOST?: string;
   JWT_SECRET?: string;
@@ -40,18 +42,40 @@ export interface EnvironmentInput {
 
 const environments = new Set<Environment>(['development', 'test', 'production']);
 
+function resolveFirebaseProjectId(input: EnvironmentInput): string | undefined {
+  const explicit = input.FIREBASE_PROJECT_ID?.trim();
+  if (explicit) return explicit;
+
+  const rawConfig = input.FIREBASE_CONFIG?.trim();
+  if (rawConfig) {
+    try {
+      const parsed = JSON.parse(rawConfig) as { projectId?: unknown };
+      if (typeof parsed.projectId === 'string' && parsed.projectId.trim()) {
+        return parsed.projectId.trim();
+      }
+    } catch {
+      // Ignore malformed FIREBASE_CONFIG and fall back to GCLOUD_PROJECT / validation error.
+    }
+  }
+
+  const gcloudProject = input.GCLOUD_PROJECT?.trim();
+  if (gcloudProject) return gcloudProject;
+
+  return undefined;
+}
+
 export function parseEnvironment(input: EnvironmentInput): AppConfig {
   const environment = input.NODE_ENV ?? 'development';
   if (!environments.has(environment as Environment)) {
     throw new Error('NODE_ENV must be development, test, or production');
   }
 
-  const port = Number(input.PORT ?? '8082');
+  const port = Number(input.PORT?.trim() || '8082');
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer between 1 and 65535');
   }
 
-  const firebaseProjectId = input.FIREBASE_PROJECT_ID?.trim();
+  const firebaseProjectId = resolveFirebaseProjectId(input);
   if (!firebaseProjectId) {
     throw new Error('FIREBASE_PROJECT_ID is required');
   }
@@ -140,6 +164,6 @@ export function parseEnvironment(input: EnvironmentInput): AppConfig {
   };
 }
 
-export function loadConfig(): AppConfig {
-  return parseEnvironment(process.env);
+export function loadConfig(overrides: Partial<EnvironmentInput> = {}): AppConfig {
+  return parseEnvironment({ ...process.env, ...overrides });
 }

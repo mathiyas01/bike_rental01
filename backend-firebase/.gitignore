@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .env.*
+.secret.local
 !.env.example
 firebase-debug.log
 ui-debug.log
