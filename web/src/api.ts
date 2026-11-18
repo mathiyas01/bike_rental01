@@ -1,10 +1,17 @@
 import axios from 'axios';
 
-const apiBaseUrl =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD
-    ? 'https://bike-rental-62cf2.containers.snapdeploy.app'
-    : 'http://localhost:8081');
+export function resolveApiBaseUrl(env: { VITE_API_URL?: string; PROD?: boolean }): string {
+  const configured = env.VITE_API_URL?.trim();
+  if (configured) return configured;
+  if (env.PROD) {
+    throw new Error(
+      'VITE_API_URL is required in production and must be set to the deployed Firebase Functions HTTPS URL.',
+    );
+  }
+  return 'http://localhost:8081';
+}
+
+const apiBaseUrl = resolveApiBaseUrl(import.meta.env);
 
 export const api = axios.create({
   baseURL: apiBaseUrl,

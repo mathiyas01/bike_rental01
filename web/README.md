@@ -11,22 +11,18 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Set `VITE_API_URL` to the deployed Spring Boot base URL (for local development, `http://localhost:8081`). Production builds use `npm run build` and can be served with `npm run preview`.
+Set `VITE_API_URL` to the backend base URL (for local development, `http://localhost:8081` is used automatically when `VITE_API_URL` is unset). Production builds use `npm run build` and require `VITE_API_URL` at runtime/build time.
 
-### Deploy to Vercel
+### Deploy to Cloudflare Pages
 
-Create a Vercel project for this repository with these settings:
+Create a Cloudflare Pages project for this repository with these settings:
 
-- **Root Directory:** `web`
-- **Framework Preset:** Vite
-- **Build Command:** `npm run build`
-- **Output Directory:** `dist`
-- **Environment variable:** `VITE_API_URL=https://bike-rental-62cf2.containers.snapdeploy.app`
+- **Root directory:** `web`
+- **Build command:** `npm run build`
+- **Build output directory:** `dist`
+- **Environment variable (Production & Preview):** `VITE_API_URL=<deployed-firebase-functions-https-url>`
 
-The backend and database remain on SnapDeploy. The browser calls the backend
-over HTTPS; PostgreSQL credentials must never be added to Vercel. The included
-`vercel.json` keeps React Router routes working when a route is opened or
-refreshed directly.
+The real Firebase Cloud Functions Gen 2 HTTPS URL must be supplied in `VITE_API_URL` after backend deployment; production builds without `VITE_API_URL` fail rather than falling back to a legacy backend. The browser calls the Firebase Functions backend over HTTPS, and `public/_redirects` (`/* /index.html 200`) keeps React Router routes working when opened or refreshed directly.
 
 The client sends the JWT returned by `POST /api/v1/auth/login` as a Bearer token. Rental charge generation, payment allocation/reversal, inventory ledger updates and service parts deduction remain backend transactions; the browser only submits the documented request DTOs.
 

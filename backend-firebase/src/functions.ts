@@ -9,7 +9,7 @@ const jwtSecret = defineSecret('JWT_SECRET');
 
 // Temporary default region for local development; final production region
 // should match the confirmed Cloud Firestore database location before deploy.
-const FUNCTIONS_REGION = process.env.FUNCTIONS_REGION?.trim() || 'europe-west1';
+const FUNCTIONS_REGION = process.env.FUNCTIONS_REGION?.trim() || 'europe-west3';
 
 let cachedApp: Express | null = null;
 
