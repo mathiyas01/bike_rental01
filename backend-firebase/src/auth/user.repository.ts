@@ -5,7 +5,6 @@ import { emailLockHash } from './jwt.service.js';
 
 const USERS = 'app_users';
 const UNIQUE_KEYS = 'unique_keys';
-const BOOTSTRAP_LOCK = 'bootstrap_lock';
 
 function fromFirestore(id: string, data: FirebaseFirestore.DocumentData): UserDocument {
   return {
@@ -48,25 +47,25 @@ export class UserRepository {
     return !snapshot.empty;
   }
 
-  async createBootstrapOwner(
+  async createInitialOwner(
     transaction: Transaction,
     values: Omit<UserDocument, 'id' | 'createdAt' | 'updatedAt'>,
   ): Promise<UserDocument> {
     const existingUsers = await transaction.get(this.firestore.collection(USERS).limit(1));
     if (!existingUsers.empty) {
-      throw new Error('BOOTSTRAP_ALREADY_INITIALIZED');
+      throw new Error('OWNER_ALREADY_INITIALIZED');
     }
 
-    const lockReference = this.firestore.collection(UNIQUE_KEYS).doc('bootstrap_lock');
+    const lockReference = this.firestore.collection(UNIQUE_KEYS).doc('initial_owner_lock');
     const lock = await transaction.get(lockReference);
     if (lock.exists) {
-      throw new Error('BOOTSTRAP_ALREADY_INITIALIZED');
+      throw new Error('OWNER_ALREADY_INITIALIZED');
     }
     const emailLockReference = this.firestore.collection(UNIQUE_KEYS)
       .doc(`email_${emailLockHash(values.emailNormalized)}`);
     const emailLock = await transaction.get(emailLockReference);
     if (emailLock.exists) {
-      throw new Error('BOOTSTRAP_ALREADY_INITIALIZED');
+      throw new Error('OWNER_ALREADY_INITIALIZED');
     }
 
     const now = new Date();
@@ -74,8 +73,8 @@ export class UserRepository {
     const user: UserDocument = { id, ...values, createdAt: now, updatedAt: now };
     const userReference = this.firestore.collection(USERS).doc(id);
     transaction.create(lockReference, {
-      fieldType: 'bootstrap',
-      normalizedValue: 'bootstrap',
+      fieldType: 'initial_owner',
+      normalizedValue: 'initial_owner',
       recordId: id,
       createdAt: now,
     });

@@ -32,10 +32,8 @@ export function createAuthRouter(firestore: Firestore, config: AppConfig): Route
   const authenticate = createAuthMiddleware(firestore, config);
   const windowMs = config.authRateLimitWindowMs ?? 900_000;
   const loginLimiter = createAuthRateLimiter(windowMs, config.authRateLimitMax ?? 20);
-  const bootstrapLimiter = createAuthRateLimiter(windowMs, config.bootstrapRateLimitMax ?? 10);
 
   router.post('/login', loginLimiter, controller.login);
-  router.post('/bootstrap-owner', bootstrapLimiter, controller.bootstrap);
   router.use(authenticate);
   if (config.enableDevPasswordReset) {
     router.post('/reset-password', ownerMiddleware, controller.resetPassword);

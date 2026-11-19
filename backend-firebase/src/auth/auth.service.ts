@@ -80,56 +80,6 @@ export class AuthService {
     };
   }
 
-  async bootstrap(body: Record<string, unknown>) {
-    const email = validateEmail(requireString(body, 'email', 'Email is required'));
-    const password = requireString(body, 'password', 'Password is required');
-    validatePassword(password, 8);
-    const fullName = requireString(body, 'fullName', 'Full name is required');
-    const preferredLanguage = body.preferredLanguage === undefined || body.preferredLanguage === null
-      ? 'en'
-      : requireString(body, 'preferredLanguage', 'Preferred language is required');
-    if (!['en', 'ro'].includes(preferredLanguage)) {
-      throw new ValidationError([{
-        field: 'preferredLanguage',
-        rejectedValue: preferredLanguage,
-        message: "Language must be either 'en' or 'ro'",
-      }]);
-    }
-
-    try {
-      const passwordHash = await bcrypt.hash(password, this.config.bcryptRounds);
-      let created!: UserDocument;
-      await this.firestore.runTransaction(async (transaction) => {
-        created = await this.users.createBootstrapOwner(transaction, {
-          email,
-          emailNormalized: email,
-          passwordHash,
-          fullName: fullName.trim(),
-          role: 'ROLE_OWNER',
-          preferredLanguage,
-          preferredCurrency: 'RON',
-          isActive: true,
-          authVersion: 0,
-        });
-      });
-      return {
-        accessToken: this.jwt.issue(created),
-        tokenType: 'Bearer',
-        expiresIn: Math.floor(this.config.jwtExpirationMs / 1000),
-        user: profile(created),
-      };
-    } catch (error) {
-      if (error instanceof Error && error.message === 'BOOTSTRAP_ALREADY_INITIALIZED') {
-        throw new AuthError(
-          409,
-          'CONFLICT',
-          'Owner account has already been initialized. Please use login instead.',
-        );
-      }
-      throw error;
-    }
-  }
-
   async getProfile(userId: string): Promise<UserProfile> {
     const user = await this.users.findById(userId);
     if (!user) throw new AuthError(404, 'NOT_FOUND', `User not found: ${userId}`);

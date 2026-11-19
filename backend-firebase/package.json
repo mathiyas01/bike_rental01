@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node dist/tests/run-tests.js",
     "test:emulator": "npm run build && firebase emulators:exec --only firestore \"node dist/tests/run-tests.js\"",
-    "emulators": "firebase emulators:start --only firestore --project bike-rental-local"
+    "emulators": "firebase emulators:start --only firestore --project bike-rental-local",
+    "seed:owner": "npm run build && node dist/src/scripts/seed-owner.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

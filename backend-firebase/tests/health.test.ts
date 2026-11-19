@@ -72,9 +72,10 @@ test('HTTP security headers and CORS allow-list are applied across API and error
     assert.equal(authErrorRes.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(authErrorRes.headers.get('x-frame-options'), 'DENY');
     assert.equal(authErrorRes.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
-    assert.equal(authErrorRes.headers.get('cache-control'), 'no-store');
+    assert.equal(authErrorRes.headers.get('cache-control'), 'no-store, max-age=0');
     assert.equal(authErrorRes.headers.get('access-control-allow-origin'), 'http://localhost:5173');
-    assert.equal(authErrorRes.headers.get('access-control-expose-headers'), 'Authorization,Content-Disposition');
+    assert.equal(authErrorRes.headers.get('access-control-expose-headers'), 'Authorization,Content-Disposition,X-Request-Id');
+    assert.ok(authErrorRes.headers.get('x-request-id'));
     assert.equal(authErrorRes.headers.get('access-control-allow-credentials'), null);
 
     // Operational endpoint (401 unauthenticated error) receives security headers & Cache-Control: no-store
@@ -85,7 +86,7 @@ test('HTTP security headers and CORS allow-list are applied across API and error
     assert.equal(opErrorRes.headers.get('x-powered-by'), null);
     assert.equal(opErrorRes.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(opErrorRes.headers.get('x-frame-options'), 'DENY');
-    assert.equal(opErrorRes.headers.get('cache-control'), 'no-store');
+    assert.equal(opErrorRes.headers.get('cache-control'), 'no-store, max-age=0');
 
     // Preflight OPTIONS for allowed origin
     const preflightAllowed = await fetch(`${baseUrl}/api/v1/bikes`, {
@@ -107,6 +108,36 @@ test('HTTP security headers and CORS allow-list are applied across API and error
     });
     assert.equal(disallowedRes.status, 401);
     assert.equal(disallowedRes.headers.get('access-control-allow-origin'), null);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test('API security middleware rejects unsafe request shapes and enables production HSTS', async () => {
+  const app = createApp(parseEnvironment({
+    NODE_ENV: 'production',
+    FIREBASE_PROJECT_ID: 'bike-rental-test',
+    JWT_SECRET: 'local-test-secret-with-at-least-32-bytes',
+    CORS_ORIGINS: 'https://app.example.com',
+  }), {} as Firestore);
+  const server = app.listen(0);
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const unsupported = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: '{}',
+    });
+    assert.equal(unsupported.status, 415);
+    assert.equal((await unsupported.json() as { error: string }).error, 'UNSUPPORTED_MEDIA_TYPE');
+
+    assert.equal(unsupported.headers.get('strict-transport-security')?.includes('max-age=31536000'), true);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -159,7 +190,6 @@ test('Stage C8.6 hardening: malformed JSON 400, auth rate limits, readiness prob
       FIREBASE_PROJECT_ID: 'bike-rental-test',
       JWT_SECRET: 'local-test-secret-with-at-least-32-bytes',
       AUTH_RATE_LIMIT_MAX: '2',
-      BOOTSTRAP_RATE_LIMIT_MAX: '2',
     }),
     mockFirestore,
   );
@@ -231,23 +261,6 @@ test('Stage C8.6 hardening: malformed JSON 400, auth rate limits, readiness prob
     });
     assert.equal(login3.status, 429);
     assert.equal((await login3.json() as Record<string, unknown>).error, 'TOO_MANY_REQUESTS');
-
-    // Bootstrap rate limiting: 1st & 2nd pass through (400 validation), 3rd is rate-limited (429)
-    for (let i = 0; i < 2; i += 1) {
-      const res = await fetch(`${baseUrl}/api/v1/auth/bootstrap-owner`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      assert.equal(res.status, 400);
-    }
-    const boot3 = await fetch(`${baseUrl}/api/v1/auth/bootstrap-owner`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    assert.equal(boot3.status, 429);
-    assert.equal((await boot3.json() as Record<string, unknown>).error, 'TOO_MANY_REQUESTS');
 
     // Graceful shutdown closes server on SIGTERM and exits with 0
     shutdownEmitter.emit('SIGTERM');

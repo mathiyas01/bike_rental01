@@ -18,29 +18,31 @@ import { createServicingRouter } from './routes/servicing.routes.js';
 import { createReportsRouter } from './routes/reports.routes.js';
 import { createBikeRouter } from './routes/bike.routes.js';
 import { createCustomerRouter } from './routes/customer.routes.js';
+import { apiResponseSecurityMiddleware, requestContextMiddleware, requireJsonMiddleware } from './middleware/security.middleware.js';
 
 export function createApp(config: AppConfig, firestore?: Firestore) {
   const app = express();
 
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy ?? (config.environment === 'production' ? 1 : false));
+  app.use(requestContextMiddleware);
   app.use(helmet({
     contentSecurityPolicy: false,
     frameguard: { action: 'deny' },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    hsts: config.environment === 'production'
+      ? { maxAge: 31_536_000, includeSubDomains: true, preload: true }
+      : false,
   }));
   app.use(cors({
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With', 'Accept', 'Origin'],
-    exposedHeaders: ['Authorization', 'Content-Disposition'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With', 'Accept', 'Origin', 'X-Request-Id'],
+    exposedHeaders: ['Authorization', 'Content-Disposition', 'X-Request-Id'],
     credentials: false,
     maxAge: 3600,
   }));
-  app.use('/api/v1', (_request, response, next) => {
-    response.setHeader('Cache-Control', 'no-store');
-    next();
-  });
+  app.use('/api/v1', apiResponseSecurityMiddleware);
   app.use((request, response, next) => {
     const startedAt = Date.now();
     response.on('finish', () => {
@@ -50,10 +52,12 @@ export function createApp(config: AppConfig, firestore?: Firestore) {
         path: request.path,
         status: response.statusCode,
         durationMs: Date.now() - startedAt,
+        requestId: response.locals.requestId,
       }));
     });
     next();
   });
+  app.use('/api/v1', requireJsonMiddleware);
   app.use(express.json({ limit: '1mb' }));
 
   app.use(createHealthRouter(firestore));

@@ -17,7 +17,6 @@ export interface AppConfig {
   trustProxy?: boolean | number;
   authRateLimitWindowMs?: number;
   authRateLimitMax?: number;
-  bootstrapRateLimitMax?: number;
 }
 
 export interface EnvironmentInput {
@@ -37,7 +36,6 @@ export interface EnvironmentInput {
   TRUST_PROXY?: string;
   AUTH_RATE_LIMIT_WINDOW_MS?: string;
   AUTH_RATE_LIMIT_MAX?: string;
-  BOOTSTRAP_RATE_LIMIT_MAX?: string;
 }
 
 const environments = new Set<Environment>(['development', 'test', 'production']);
@@ -122,11 +120,6 @@ export function parseEnvironment(input: EnvironmentInput): AppConfig {
     throw new Error('AUTH_RATE_LIMIT_MAX must be a positive integer');
   }
 
-  const bootstrapRateLimitMax = Number(input.BOOTSTRAP_RATE_LIMIT_MAX ?? '10');
-  if (!Number.isInteger(bootstrapRateLimitMax) || bootstrapRateLimitMax <= 0) {
-    throw new Error('BOOTSTRAP_RATE_LIMIT_MAX must be a positive integer');
-  }
-
   const trustProxyRaw = input.TRUST_PROXY?.trim();
   let trustProxy: boolean | number = environment === 'production' ? 1 : false;
   if (trustProxyRaw !== undefined && trustProxyRaw !== '') {
@@ -160,7 +153,6 @@ export function parseEnvironment(input: EnvironmentInput): AppConfig {
     trustProxy,
     authRateLimitWindowMs,
     authRateLimitMax,
-    bootstrapRateLimitMax,
   };
 }
 

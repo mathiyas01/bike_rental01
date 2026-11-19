@@ -7,9 +7,6 @@ export function createAuthController(service: AuthService) {
     login: async (request: AuthenticatedRequest, response: Response) => {
       response.status(200).json(await service.login(request.body as Record<string, unknown>));
     },
-    bootstrap: async (request: AuthenticatedRequest, response: Response) => {
-      response.status(201).json(await service.bootstrap(request.body as Record<string, unknown>));
-    },
     profile: async (request: AuthenticatedRequest, response: Response) => {
       response.status(200).json(await service.getProfile(request.authenticatedUser!.id));
     },

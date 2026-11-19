@@ -8,6 +8,7 @@ export interface ErrorResponse {
   error: string;
   message: string;
   path: string;
+  requestId?: string;
 }
 
 export const notFoundMiddleware: RequestHandler = (request, response) => {
@@ -17,6 +18,7 @@ export const notFoundMiddleware: RequestHandler = (request, response) => {
     error: 'NOT_FOUND',
     message: 'Route not found',
     path: request.path,
+    requestId: response.locals.requestId,
   } satisfies ErrorResponse);
 };
 
@@ -33,6 +35,7 @@ export const errorMiddleware: ErrorRequestHandler = (
       error: error.errorCode,
       message: error.message,
       path: request.path,
+      requestId: response.locals.requestId,
       ...(error instanceof ValidationError ? { validationErrors: error.validationErrors } : {}),
     });
     return;
@@ -44,6 +47,7 @@ export const errorMiddleware: ErrorRequestHandler = (
       error: error.errorCode,
       message: error.message,
       path: request.path,
+      requestId: response.locals.requestId,
       ...(error instanceof SharedValidationError ? { validationErrors: error.validationErrors } : {}),
     });
     return;
@@ -55,6 +59,18 @@ export const errorMiddleware: ErrorRequestHandler = (
       error: 'BAD_REQUEST',
       message: 'Malformed JSON request body',
       path: request.path,
+      requestId: response.locals.requestId,
+    } satisfies ErrorResponse);
+    return;
+  }
+  if (error && typeof error === 'object' && 'type' in error && error.type === 'entity.too.large') {
+    response.status(413).json({
+      timestamp: new Date().toISOString(),
+      status: 413,
+      error: 'PAYLOAD_TOO_LARGE',
+      message: 'Request body exceeds the allowed size',
+      path: request.path,
+      requestId: response.locals.requestId,
     } satisfies ErrorResponse);
     return;
   }
@@ -64,6 +80,7 @@ export const errorMiddleware: ErrorRequestHandler = (
     method: request.method,
     path: request.path,
     message,
+    requestId: response.locals.requestId,
   }));
   response.status(500).json({
     timestamp: new Date().toISOString(),
@@ -71,5 +88,6 @@ export const errorMiddleware: ErrorRequestHandler = (
     error: 'INTERNAL_SERVER_ERROR',
     message: 'An unexpected internal server error occurred',
     path: request.path,
+    requestId: response.locals.requestId,
   } satisfies ErrorResponse);
 };
