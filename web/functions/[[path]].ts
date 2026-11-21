@@ -34,4 +34,4 @@ function createHandler(env: Env) {
 }
 
 export const onRequest: PagesFunction<Env> = (context) =>
-  createHandler(context.env)(context.request, context.env, context);
+  createHandler(context.env).fetch(context.request, context.env, context);
