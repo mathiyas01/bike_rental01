@@ -53,22 +53,23 @@ function validatePassword(password: string, minimum: number): void {
 
 export class AuthService {
   private readonly users: UserRepository;
-  private readonly jwt: JwtService;
+  private readonly jwt?: JwtService;
 
   constructor(
     private readonly firestore: Firestore,
     private readonly config: AppConfig,
   ) {
     this.users = new UserRepository(firestore);
-    this.jwt = new JwtService(config);
+    if (config.environment === 'test') this.jwt = new JwtService(config);
   }
 
   async login(body: Record<string, unknown>) {
+    if (!this.jwt) throw new AuthError(404, 'NOT_FOUND', 'Route not found');
     const email = validateEmail(requireString(body, 'email', 'Email is required'));
     const password = requireString(body, 'password', 'Password is required');
     validatePassword(password, 6);
     const user = await this.users.findByEmail(email);
-    if (!user || !user.isActive || user.role !== 'ROLE_OWNER' ||
+    if (!user || !user.passwordHash || !user.isActive || user.role !== 'ROLE_OWNER' ||
         !(await bcrypt.compare(password, user.passwordHash))) {
       throw new AuthError(401, 'UNAUTHORIZED', 'Invalid email or password');
     }

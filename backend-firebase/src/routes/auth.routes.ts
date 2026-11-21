@@ -33,7 +33,9 @@ export function createAuthRouter(firestore: Firestore, config: AppConfig): Route
   const windowMs = config.authRateLimitWindowMs ?? 900_000;
   const loginLimiter = createAuthRateLimiter(windowMs, config.authRateLimitMax ?? 20);
 
-  router.post('/login', loginLimiter, controller.login);
+  // Firebase Authentication handles production sign-in. The legacy endpoint is
+  // retained only for the isolated suite until it uses Auth Emulator tokens.
+  if (config.environment === 'test') router.post('/login', loginLimiter, controller.login);
   router.use(authenticate);
   if (config.enableDevPasswordReset) {
     router.post('/reset-password', ownerMiddleware, controller.resetPassword);

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { api, errorMessage, listPage, resetUnauthorizedHandling, setUnauthorizedHandler, type PageResult } from './api';
 import { LanguageContext, normalizeLanguage, useT, type Language } from './i18n';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { firebaseAuth } from './firebase';
 
 type User = { id: string; email: string; fullName: string; role: string; preferredLanguage?: string; preferredCurrency?: string };
 type RecordData = Record<string, any>;
@@ -23,6 +25,7 @@ const currencies = ['RON', 'EUR', 'USD'];
 
 function App() {
   const [user, setUser] = useState<User | null>(() => JSON.parse(localStorage.getItem('user') || 'null'));
+  const [authReady, setAuthReady] = useState(false);
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem('language');
     if (saved) return normalizeLanguage(saved);
@@ -31,11 +34,31 @@ function App() {
   });
   const navigate = useNavigate();
 
-  const logout = () => {
-    localStorage.removeItem('jwt_token');
+  const logout = async () => {
+    await signOut(firebaseAuth);
     localStorage.removeItem('user');
     setUser(null);
   };
+
+  useEffect(() => onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+    if (!firebaseUser) {
+      localStorage.removeItem('user');
+      setUser(null);
+      setAuthReady(true);
+      return;
+    }
+    try {
+      const { data } = await api.get<User>('/api/v1/auth/profile');
+      localStorage.setItem('user', JSON.stringify(data));
+      setUser(data);
+    } catch {
+      await signOut(firebaseAuth);
+      localStorage.removeItem('user');
+      setUser(null);
+    } finally {
+      setAuthReady(true);
+    }
+  }), []);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -54,6 +77,7 @@ function App() {
     setUser(loggedInUser);
   };
 
+  if (!authReady) return <div className="state">Loading...</div>;
   return <LanguageContext.Provider value={language}>
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />} />
@@ -66,8 +90,9 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const t = useT();
   const [email, setEmail] = useState('admin@bikerental.ro'); const [password, setPassword] = useState(''); const [error, setError] = useState('');
   const submit = async (e: FormEvent) => { e.preventDefault(); setError(''); try {
-    const { data } = await api.post('/api/v1/auth/login', { email, password });
-    localStorage.setItem('jwt_token', data.accessToken); localStorage.setItem('user', JSON.stringify(data.user)); onLogin(data.user);
+    await signInWithEmailAndPassword(firebaseAuth, email, password);
+    const { data } = await api.get<User>('/api/v1/auth/profile');
+    localStorage.setItem('user', JSON.stringify(data)); onLogin(data);
   } catch (err) { setError(errorMessage(err)); } };
   return <main className="login-page"><form className="login-card" onSubmit={submit}>
     <div className="brand-mark"><Gauge size={25} /></div><h1>MotoRental Pro</h1><p className="muted">{t.login.subtitle}</p>
@@ -77,7 +102,7 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
   </form></main>;
 }
 
-function Shell({ user, logout, language, setLanguage }: { user: User; logout: () => void; language: string; setLanguage: (v: string) => void }) {
+function Shell({ user, logout, language, setLanguage }: { user: User; logout: () => void | Promise<void>; language: string; setLanguage: (v: string) => void }) {
   const t = useT();
   const [open, setOpen] = useState(false); const location = useLocation();
   const activeNavKey = nav.find(n => location.pathname.startsWith(n[0]))?.[1];
@@ -3528,7 +3553,7 @@ function SettingsPage({ language, setLanguage }: { language: string; setLanguage
   };
   return <Page title={t.settings.title} subtitle={t.settings.subtitle}>{error && <div className="error">{error}</div>}<div className="settings-card"><Languages /><div><h2>{t.settings.language}</h2><p className="muted">{t.settings.languageDesc}</p></div><select value={language} onChange={e => void save('language', e.target.value)}><option value="en">English</option><option value="ro">Română</option></select></div><div className="settings-card"><CircleDollarSign /><div><h2>{t.settings.currencyDisplay}</h2><p className="muted">{t.settings.currencyDesc}</p></div><select value={currency} onChange={e => void save('currency', e.target.value)}>{currencies.map(c => <option key={c}>{c}</option>)}</select></div></Page>;
 }
-function More({ user, logout }: { user: User; logout: () => void }) {
+function More({ user, logout }: { user: User; logout: () => void | Promise<void> }) {
   const t = useT();
   return <Page title={t.account.title} subtitle={t.account.subtitle}><div className="profile-card"><div className="avatar">{user.fullName?.[0] || 'O'}</div><div><h2>{user.fullName}</h2><p className="muted">{user.email} · {user.role}</p></div></div><Button onClick={logout}><LogOut size={17} />{t.nav.signOut}</Button></Page>;
 }

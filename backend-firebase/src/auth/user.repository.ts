@@ -11,7 +11,7 @@ function fromFirestore(id: string, data: FirebaseFirestore.DocumentData): UserDo
     id,
     email: String(data.email),
     emailNormalized: String(data.emailNormalized),
-    passwordHash: String(data.passwordHash),
+    ...(typeof data.passwordHash === 'string' ? { passwordHash: data.passwordHash } : {}),
     fullName: String(data.fullName),
     role: String(data.role),
     preferredLanguage: String(data.preferredLanguage),
@@ -49,7 +49,7 @@ export class UserRepository {
 
   async createInitialOwner(
     transaction: Transaction,
-    values: Omit<UserDocument, 'id' | 'createdAt' | 'updatedAt'>,
+    values: Omit<UserDocument, 'createdAt' | 'updatedAt'>,
   ): Promise<UserDocument> {
     const existingUsers = await transaction.get(this.firestore.collection(USERS).limit(1));
     if (!existingUsers.empty) {
@@ -69,8 +69,8 @@ export class UserRepository {
     }
 
     const now = new Date();
-    const id = randomUUID();
-    const user: UserDocument = { id, ...values, createdAt: now, updatedAt: now };
+    const id = values.id || randomUUID();
+    const user: UserDocument = { ...values, id, createdAt: now, updatedAt: now };
     const userReference = this.firestore.collection(USERS).doc(id);
     transaction.create(lockReference, {
       fieldType: 'initial_owner',

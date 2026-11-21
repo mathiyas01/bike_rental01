@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { firebaseAuth } from './firebase';
 
 export function resolveApiBaseUrl(env: { VITE_API_URL?: string; PROD?: boolean }): string {
   const configured = env.VITE_API_URL?.trim();
@@ -18,8 +19,8 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
   timeout: 15000,
 });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('jwt_token');
+api.interceptors.request.use(async (config) => {
+  const token = await firebaseAuth.currentUser?.getIdToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -40,13 +41,11 @@ api.interceptors.response.use(
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       const requestUrl = String(error.config?.url ?? '');
-      const isLoginRequest = requestUrl.includes('/api/v1/auth/login');
       const isAlreadyOnLogin =
         typeof window !== 'undefined' && window.location.pathname === '/login';
 
-      if (!isLoginRequest && !isAlreadyOnLogin && !handlingUnauthorized) {
+      if (!isAlreadyOnLogin && !handlingUnauthorized) {
         handlingUnauthorized = true;
-        localStorage.removeItem('jwt_token');
         localStorage.removeItem('user');
         if (unauthorizedHandler) {
           unauthorizedHandler();

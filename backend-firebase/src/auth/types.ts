@@ -4,7 +4,7 @@ export interface UserDocument {
   id: string;
   email: string;
   emailNormalized: string;
-  passwordHash: string;
+  passwordHash?: string;
   fullName: string;
   role: string;
   preferredLanguage: string;

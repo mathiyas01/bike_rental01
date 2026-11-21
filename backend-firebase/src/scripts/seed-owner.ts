@@ -1,5 +1,5 @@
-import bcrypt from 'bcrypt';
 import { cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { normalizeEmail } from '../auth/jwt.service.js';
 import { UserRepository } from '../auth/user.repository.js';
@@ -35,6 +35,7 @@ async function main() {
 
   const app = getApps()[0] ?? initializeApp({ credential: cert(serviceAccount) });
   const firestore = getFirestore(app);
+  const auth = getAuth(app);
   const users = new UserRepository(firestore);
   const existing = await users.findByEmail(email);
   if (existing) {
@@ -45,20 +46,37 @@ async function main() {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
-  await firestore.runTransaction(async (transaction) => {
-    await users.createInitialOwner(transaction, {
+  let authUser;
+  try {
+    authUser = await auth.getUserByEmail(email);
+    if (authUser.disabled) await auth.updateUser(authUser.uid, { disabled: false });
+  } catch (error: unknown) {
+    if ((error as { code?: string }).code !== 'auth/user-not-found') throw error;
+    authUser = await auth.createUser({ email, password, displayName: fullName, emailVerified: true });
+  }
+  await auth.setCustomUserClaims(authUser.uid, { role: 'ROLE_OWNER' });
+
+  try {
+    await firestore.runTransaction(async (transaction) => {
+      await users.createInitialOwner(transaction, {
+      id: authUser.uid,
       email,
       emailNormalized: email,
-      passwordHash,
       fullName,
       role: 'ROLE_OWNER',
       preferredLanguage: 'en',
       preferredCurrency: 'RON',
       isActive: true,
       authVersion: 0,
+      });
     });
-  });
+  } catch (error) {
+    if ((error as Error).message === 'OWNER_ALREADY_INITIALIZED') {
+      console.info(JSON.stringify({ event: 'owner_seed_skipped', reason: 'already_exists' }));
+      return;
+    }
+    throw error;
+  }
   console.info(JSON.stringify({ event: 'owner_seeded' }));
 }
 

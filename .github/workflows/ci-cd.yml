@@ -39,6 +39,10 @@ jobs:
       - name: Build production frontend
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
         run: npm run build
 
       - name: Upload web build
@@ -104,6 +108,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Deploy Firebase API
+        run: npx firebase-tools deploy --only functions --project "${{ vars.VITE_FIREBASE_PROJECT_ID }}" --non-interactive
 
       - name: Seed owner if database is empty
         env:
