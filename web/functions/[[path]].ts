@@ -29,7 +29,9 @@ function createHandler(env: Env) {
     CORS_ORIGINS: 'https://motorental-dashboard.pages.dev',
     ENABLE_DEV_PASSWORD_RESET: 'false',
   });
-  handler = httpServerHandler(createServer(createApp(config, firestore)));
+  const server = createServer(createApp(config, firestore));
+  server.listen(8080);
+  handler = httpServerHandler({ port: 8080 });
   return handler;
 }
 
