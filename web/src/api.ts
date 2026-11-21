@@ -2,13 +2,10 @@ import axios from 'axios';
 import { firebaseAuth } from './firebase';
 
 export function resolveApiBaseUrl(env: { VITE_API_URL?: string; PROD?: boolean }): string {
+  // Production API routes are served by this Cloudflare Pages project.
+  if (env.PROD) return '';
   const configured = env.VITE_API_URL?.trim();
   if (configured) return configured;
-  if (env.PROD) {
-    throw new Error(
-      'VITE_API_URL is required in production and must be set to the deployed Firebase Functions HTTPS URL.',
-    );
-  }
   return 'http://localhost:8081';
 }
 
