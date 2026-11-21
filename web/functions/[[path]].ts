@@ -40,4 +40,4 @@ async function createHandler(env: Env) {
 }
 
 export const onRequest: PagesFunction<Env> = async (context) =>
-  (await createHandler(context.env)).fetch(context.request, context.env, context);
+  (await createHandler(context.env))(context.request, context.env, context);
