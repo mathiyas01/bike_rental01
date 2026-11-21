@@ -1,4 +1,3 @@
-import bcrypt from 'bcrypt';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { AppConfig } from '../config/env.js';
 import { AuthError, ValidationError } from './errors.js';
@@ -65,6 +64,7 @@ export class AuthService {
 
   async login(body: Record<string, unknown>) {
     if (!this.jwt) throw new AuthError(404, 'NOT_FOUND', 'Route not found');
+    const { default: bcrypt } = await import('bcrypt');
     const email = validateEmail(requireString(body, 'email', 'Email is required'));
     const password = requireString(body, 'password', 'Password is required');
     validatePassword(password, 6);
@@ -115,6 +115,7 @@ export class AuthService {
     if (!this.config.enableDevPasswordReset) {
       throw new AuthError(404, 'NOT_FOUND', 'Route not found');
     }
+    const { default: bcrypt } = await import('bcrypt');
     const email = validateEmail(requireString(body, 'email', 'Email is required'));
     const password = requireString(body, 'password', 'Password is required');
     validatePassword(password, 6);
