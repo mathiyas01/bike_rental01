@@ -35,5 +35,10 @@ function createHandler(env: Env) {
   return handler;
 }
 
-export const onRequest: PagesFunction<Env> = (context) =>
-  createHandler(context.env).fetch(context.request, context.env, context);
+export const onRequest: PagesFunction<Env> = (context) => {
+  // Extract fetch before calling it. Calling it as handler.fetch(...) binds
+  // the handler object as `this`, which shifts the native bridge arguments.
+  const fetch = createHandler(context.env).fetch;
+  if (!fetch) throw new Error('Cloudflare HTTP server handler has no fetch method');
+  return fetch(context.request, context.env, context as unknown as ExecutionContext);
+};
