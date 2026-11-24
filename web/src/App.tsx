@@ -1131,7 +1131,7 @@ function Rentals() {
     setChargeActionSuccess('');
     setGeneratingNext(true);
     try {
-      const { data } = await api.post(`/api/v1/rental-charges/rental/${selectedRental.id}/generate-next`);
+      const { data } = await api.post(`/api/v1/rental-charges/rental/${selectedRental.id}/generate-next`, {});
       setChargeActionSuccess(
         `${t.rentals.generatedSinglePrefix} #${data.chargeSequence} (${data.periodStartDate} → ${data.periodEndDate}).`,
       );
@@ -1159,7 +1159,7 @@ function Rentals() {
     try {
       const { data } = await api.post(
         `/api/v1/rental-charges/rental/${selectedRental.id}/generate-up-to-date`,
-        undefined,
+        {},
         { params: { targetDate } },
       );
       const createdList = Array.isArray(data) ? data : [];

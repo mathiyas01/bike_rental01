@@ -294,6 +294,13 @@ export class RentalRepository {
     return snapshot.docs.map((document) => chargeFrom(document.id, document.data()));
   }
 
+  latestChargeQuery(rentalId: string): Query {
+    return this.firestore.collection(charges)
+      .where('rentalId', '==', rentalId)
+      .orderBy('chargeSequence', 'desc')
+      .limit(1);
+  }
+
   private async pageQuery<T>(
     baseQuery: Query,
     page: PageRequest,

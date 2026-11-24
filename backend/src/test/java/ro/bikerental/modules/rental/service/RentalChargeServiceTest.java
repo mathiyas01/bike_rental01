@@ -85,6 +85,26 @@ class RentalChargeServiceTest {
     }
 
     @Test
+    void generateChargesUpToDate_endsAndProratesOnSelectedDate() {
+        RentalCharge initial = new RentalCharge(sampleRental, 1,
+                LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 7), LocalDate.of(2026, 10, 7),
+                BigDecimal.valueOf(350), "RON", "Initial charge");
+        when(rentalRepository.findById(sampleRental.getId())).thenReturn(Optional.of(sampleRental));
+        when(rentalChargeRepository.findFirstByRentalIdOrderByChargeSequenceDesc(sampleRental.getId()))
+                .thenReturn(Optional.of(initial));
+        when(rentalChargeRepository.save(any(RentalCharge.class))).thenAnswer(i -> i.getArgument(0));
+
+        List<RentalChargeDto> charges = rentalChargeService.generateChargesUpToDate(
+                sampleRental.getId(), LocalDate.of(2026, 10, 16));
+
+        assertThat(charges).extracting(RentalChargeDto::getPeriodStartDate)
+                .containsExactly(LocalDate.of(2026, 10, 8), LocalDate.of(2026, 10, 15));
+        assertThat(charges).extracting(RentalChargeDto::getPeriodEndDate)
+                .containsExactly(LocalDate.of(2026, 10, 14), LocalDate.of(2026, 10, 16));
+        assertThat(charges.getLast().getAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
+    }
+
+    @Test
     @DisplayName("Should throw BusinessException when generating charges past rental closure date")
     void generateNextWeeklyCharge_pastClosedDate_throwsBusinessException() {
         sampleRental.setActualClosedDate(LocalDate.of(2026, 10, 7));

@@ -4,6 +4,7 @@ import net from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { createApp } from '../src/app.js';
+import { JwtService } from '../src/auth/jwt.service.js';
 import { parseEnvironment } from '../src/config/env.js';
 import { initializeFirebase } from '../src/config/firebase.js';
 import { RentalService } from '../src/rental/rental.service.js';
@@ -60,6 +61,25 @@ async function request(
   }
 }
 
+async function ownerToken(firestore: FirebaseFirestore.Firestore): Promise<string> {
+  const now = new Date();
+  const user = {
+    id: randomUUID(),
+    email: 'rental-test-owner@example.com',
+    emailNormalized: 'rental-test-owner@example.com',
+    fullName: 'Rental Test Owner',
+    role: 'ROLE_OWNER',
+    preferredLanguage: 'en',
+    preferredCurrency: 'RON',
+    isActive: true,
+    authVersion: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await firestore.collection('app_users').doc(user.id).set(user);
+  return new JwtService(config).issue(user);
+}
+
 test('rental and charge workflows preserve Java behavior', async (context) => {
   if (!process.env.FIRESTORE_EMULATOR_HOST ||
       !await reachable(process.env.FIRESTORE_EMULATOR_HOST)) {
@@ -76,16 +96,7 @@ test('rental and charge workflows preserve Java behavior', async (context) => {
   }
   const app = createApp(config, firestore);
 
-  const bootstrap = await request(app, '/api/v1/auth/bootstrap-owner', undefined, {
-    method: 'POST',
-    body: JSON.stringify({
-      email: 'owner@example.com',
-      password: 'password123',
-      fullName: 'Owner',
-    }),
-  });
-  assert.equal(bootstrap.status, 201);
-  const token = String((bootstrap.body as Record<string, unknown>).accessToken);
+  const token = await ownerToken(firestore);
   const protectedRoutes = [
     '/api/v1/rentals',
     '/api/v1/rentals/not-a-uuid',
@@ -271,6 +282,12 @@ test('rental and charge workflows preserve Java behavior', async (context) => {
     duplicateGeneration.map((result) => Number((result.body as Record<string, unknown>).chargeSequence)).sort((a, b) => a - b),
     [2, 3],
   );
+  const nextCharges = duplicateGeneration.map((result) => result.body as Record<string, unknown>)
+    .sort((a, b) => Number(a.chargeSequence) - Number(b.chargeSequence));
+  assert.deepEqual(nextCharges.map((charge) => [charge.periodStartDate, charge.periodEndDate]), [
+    ['2026-01-08', '2026-01-14'],
+    ['2026-01-15', '2026-01-21'],
+  ]);
 
   const generated = await request(
     app,
@@ -470,25 +487,7 @@ test('Stage C8.4.4.1 atomic generateUpToDate handles batching, limits, concurren
   const firestore = firebase.firestore;
   const app = createApp(config, firestore);
 
-  const bootstrap = await request(app, '/api/v1/auth/bootstrap-owner', undefined, {
-    method: 'POST',
-    body: JSON.stringify({
-      email: 'owner@example.com',
-      password: 'password123',
-      fullName: 'Owner',
-    }),
-  });
-  let token: string;
-  if (bootstrap.status === 201) {
-    token = String((bootstrap.body as Record<string, unknown>).accessToken);
-  } else {
-    const login = await request(app, '/api/v1/auth/login', undefined, {
-      method: 'POST',
-      body: JSON.stringify({ email: 'owner@example.com', password: 'password123' }),
-    });
-    assert.equal(login.status, 200);
-    token = String((login.body as Record<string, unknown>).accessToken);
-  }
+  const token = await ownerToken(firestore);
 
   const custRes = await request(app, '/api/v1/customers', token, {
     method: 'POST',
@@ -543,11 +542,13 @@ test('Stage C8.4.4.1 atomic generateUpToDate handles batching, limits, concurren
   assert.equal(multiBody.length, 4);
   assert.deepEqual(multiBody.map((c) => c.chargeSequence), [2, 3, 4, 5]);
   assert.deepEqual(multiBody.map((c) => c.periodStartDate), ['2026-01-08', '2026-01-15', '2026-01-22', '2026-01-29']);
+  assert.deepEqual(multiBody.map((c) => c.periodEndDate), ['2026-01-14', '2026-01-21', '2026-01-28', '2026-01-29']);
+  assert.deepEqual(multiBody.map((c) => c.amount), [150, 150, 150, 21.43]);
   assert.deepEqual(multiBody.map((c) => c.status), ['UNPAID', 'UNPAID', 'UNPAID', 'UNPAID']);
 
   const multiCursor = await firestore.collection('rental_charge_cursors').doc(multiRentalId).get();
   assert.equal(multiCursor.data()?.nextSequence, 6);
-  assert.equal(multiCursor.data()?.nextPeriodStart, '2026-02-05');
+  assert.equal(multiCursor.data()?.nextPeriodStart, '2026-01-30');
 
   const noopRetry = await request(
     app,
@@ -558,21 +559,27 @@ test('Stage C8.4.4.1 atomic generateUpToDate handles batching, limits, concurren
   assert.equal(noopRetry.status, 201);
   assert.deepEqual(noopRetry.body, []);
 
-  // 2. Missing cursor fallback: deleting cursor resumes cleanly from highest chargeSequence without duplicates
-  await firestore.collection('rental_charge_cursors').doc(multiRentalId).delete();
+  // 2. An outdated cursor must not return an existing charge instead of advancing the schedule.
+  await firestore.collection('rental_charge_cursors').doc(multiRentalId).update({
+    nextSequence: 2,
+    nextPeriodStart: '2026-01-08',
+  });
+  // Older records can have a due date after the period end.
+  await firestore.collection('rental_charges').doc(`${multiRentalId}_5`).update({ dueDate: '2026-02-01' });
   const fallbackRes = await request(
     app,
-    `/api/v1/rental-charges/rental/${multiRentalId}/generate-up-to-date?targetDate=2026-02-05`,
+    `/api/v1/rental-charges/rental/${multiRentalId}/generate-next`,
     token,
     { method: 'POST' },
   );
   assert.equal(fallbackRes.status, 201);
-  const fallbackBody = fallbackRes.body as Array<Record<string, unknown>>;
-  assert.equal(fallbackBody.length, 1);
-  assert.equal(fallbackBody[0]!.chargeSequence, 6);
+  const fallbackBody = fallbackRes.body as Record<string, unknown>;
+  assert.equal(fallbackBody.chargeSequence, 6);
+  assert.equal(fallbackBody.periodStartDate, '2026-02-02');
+  assert.equal(fallbackBody.periodEndDate, '2026-02-08');
   const restoredCursor = await firestore.collection('rental_charge_cursors').doc(multiRentalId).get();
   assert.equal(restoredCursor.data()?.nextSequence, 7);
-  assert.equal(restoredCursor.data()?.nextPeriodStart, '2026-02-12');
+  assert.equal(restoredCursor.data()?.nextPeriodStart, '2026-02-09');
 
   // 3. 500-charge rejection returns 409 with zero new writes and unchanged cursor;
   //    exact 499-charge boundary succeeds in one transaction.
@@ -609,7 +616,7 @@ test('Stage C8.4.4.1 atomic generateUpToDate handles batching, limits, concurren
   assert.equal(exact499Body[498]!.chargeSequence, 500);
   const cursorAfter499 = await firestore.collection('rental_charge_cursors').doc(boundaryRentalId).get();
   assert.equal(cursorAfter499.data()?.nextSequence, 501);
-  assert.equal(cursorAfter499.data()?.nextPeriodStart, addDays('2026-01-08', 499 * 7));
+  assert.equal(cursorAfter499.data()?.nextPeriodStart, addDays(targetFor499, 1));
 
   // 4. Concurrent generateUpToDate calls cannot duplicate sequences
   const concurrentRentalId = await createBikeAndRental('B-8441-CONC', '2026-01-01');

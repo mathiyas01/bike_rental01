@@ -17,7 +17,9 @@ import ro.bikerental.modules.rental.repository.RentalChargeRepository;
 import ro.bikerental.modules.rental.repository.RentalRepository;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -41,61 +43,52 @@ public class RentalChargeService {
         Rental rental = rentalRepository.findById(rentalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rental agreement", rentalId));
 
-        if (rental.getStatus() == RentalStatus.CANCELLED) {
-            throw new BusinessException("Cannot generate charges for a cancelled rental");
-        }
-
-        Optional<RentalCharge> latestChargeOpt = rentalChargeRepository.findFirstByRentalIdOrderByChargeSequenceDesc(rentalId);
-
-        int nextSequence = 1;
-        LocalDate nextPeriodStart = rental.getStartDate();
-
-        if (latestChargeOpt.isPresent()) {
-            RentalCharge latest = latestChargeOpt.get();
-            nextSequence = latest.getChargeSequence() + 1;
-            nextPeriodStart = latest.getPeriodEndDate().plusDays(1);
-        }
-
-        if (rental.getActualClosedDate() != null && nextPeriodStart.isAfter(rental.getActualClosedDate())) {
-            throw new BusinessException("Cannot generate charge after rental actual closed date: " + rental.getActualClosedDate());
-        }
-
-        LocalDate nextPeriodEnd = nextPeriodStart.plusDays(6);
-        LocalDate dueDate = nextPeriodStart;
-
-        RentalCharge charge = new RentalCharge(
-                rental,
-                nextSequence,
-                nextPeriodStart,
-                nextPeriodEnd,
-                dueDate,
-                rental.getWeeklyRate(),
-                rental.getCurrency(),
-                "Recurring weekly charge #" + nextSequence
-        );
-
-        RentalCharge saved = rentalChargeRepository.save(charge);
-        return RentalChargeDto.fromEntity(saved, BigDecimal.ZERO);
+        return generateCharges(rental, null).getFirst();
     }
 
     @Transactional
     public List<RentalChargeDto> generateChargesUpToDate(UUID rentalId, LocalDate targetDate) {
         Rental rental = rentalRepository.findById(rentalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rental agreement", rentalId));
+        return generateCharges(rental, targetDate);
+    }
+
+    private List<RentalChargeDto> generateCharges(Rental rental, LocalDate targetDate) {
+        if (rental.getStatus() == RentalStatus.CANCELLED) {
+            throw new BusinessException("Cannot generate charges for a cancelled rental");
+        }
+
+        RentalCharge latest = rentalChargeRepository.findFirstByRentalIdOrderByChargeSequenceDesc(rental.getId())
+                .orElse(null);
+        int sequence = latest == null ? 1 : latest.getChargeSequence() + 1;
+        LocalDate nextStart = rental.getStartDate();
+        if (latest != null) {
+            LocalDate lastDay = latest.getDueDate().isAfter(latest.getPeriodEndDate())
+                    ? latest.getDueDate() : latest.getPeriodEndDate();
+            nextStart = lastDay.plusDays(1);
+        }
+
+        LocalDate closedDate = rental.getActualClosedDate();
+        if (targetDate == null && closedDate != null && nextStart.isAfter(closedDate)) {
+            throw new BusinessException("Cannot generate charge after rental actual closed date: " + closedDate);
+        }
+        LocalDate lastDay = targetDate == null ? nextStart.plusDays(6) : targetDate;
+        if (closedDate != null && closedDate.isBefore(lastDay)) {
+            lastDay = closedDate;
+        }
 
         List<RentalChargeDto> generated = new ArrayList<>();
-        while (true) {
-            Optional<RentalCharge> latest = rentalChargeRepository.findFirstByRentalIdOrderByChargeSequenceDesc(rentalId);
-            LocalDate nextStart = latest.map(rc -> rc.getPeriodEndDate().plusDays(1)).orElse(rental.getStartDate());
-
-            if (nextStart.isAfter(targetDate)) {
-                break;
-            }
-            if (rental.getActualClosedDate() != null && nextStart.isAfter(rental.getActualClosedDate())) {
-                break;
-            }
-
-            generated.add(generateNextWeeklyCharge(rentalId));
+        while (!nextStart.isAfter(lastDay)) {
+            LocalDate weeklyEnd = nextStart.plusDays(6);
+            LocalDate end = weeklyEnd.isAfter(lastDay) ? lastDay : weeklyEnd;
+            long days = ChronoUnit.DAYS.between(nextStart, end) + 1;
+            BigDecimal amount = rental.getWeeklyRate().multiply(BigDecimal.valueOf(days))
+                    .divide(BigDecimal.valueOf(7), 2, RoundingMode.HALF_UP);
+            RentalCharge charge = new RentalCharge(rental, sequence, nextStart, end, nextStart,
+                    amount, rental.getCurrency(), "Recurring weekly charge #" + sequence);
+            generated.add(RentalChargeDto.fromEntity(rentalChargeRepository.save(charge), BigDecimal.ZERO));
+            sequence++;
+            nextStart = end.plusDays(1);
         }
         return generated;
     }

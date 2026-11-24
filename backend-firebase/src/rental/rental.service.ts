@@ -4,10 +4,12 @@ import { BusinessError, ConflictError, NotFoundError, OperationalError, Validati
 import { addDays, isBefore, parseDate, todayBucharest } from '../shared/dates.js';
 import {
   addMoney,
+  fromMinorUnits,
   maxZero,
   moneyToJson,
   normalizeMoney,
   subtractMoney,
+  toMinorUnits,
 } from '../shared/money.js';
 import { parsePage, toPage, type PageResponse } from '../shared/pagination.js';
 import { requireUuid } from '../shared/ids.js';
@@ -442,31 +444,23 @@ export class RentalService {
     return toPage(result.items.map(rentalDto), page, result.totalElements);
   }
 
-  private async readNextChargeCursor(
+  private async readNextChargePeriod(
     transaction: FirebaseFirestore.Transaction,
     rentalId: string,
     rental: RentalDocument,
-  ): Promise<{ sequence: number; periodStart: string; cursorExists: boolean }> {
-    const cursorSnapshot = await transaction.get(this.repository.cursorReference(rentalId));
-    if (cursorSnapshot.exists) {
-      return {
-        sequence: Number(cursorSnapshot.data()?.nextSequence),
-        periodStart: String(cursorSnapshot.data()?.nextPeriodStart),
-        cursorExists: true,
-      };
-    }
+  ): Promise<{ sequence: number; periodStart: string }> {
+    // Serialize generation for this rental while deriving dates from saved charges.
+    await transaction.get(this.repository.cursorReference(rentalId));
     const latestSnapshot = await transaction.get(
-      this.firestore.collection('rental_charges')
-        .where('rentalId', '==', rentalId)
-        .orderBy('chargeSequence', 'desc')
-        .limit(1),
+      this.repository.latestChargeQuery(rentalId),
     );
     const latest = latestSnapshot.docs[0];
-    const latestCharge = latest ? this.repository.readCharge(latest) : undefined;
+    if (!latest) return { sequence: 1, periodStart: rental.startDate };
+    const charge = this.repository.readCharge(latest);
+    const lastDay = charge.dueDate > charge.periodEndDate ? charge.dueDate : charge.periodEndDate;
     return {
-      sequence: latestCharge ? latestCharge.chargeSequence + 1 : 1,
-      periodStart: latestCharge ? addDays(latestCharge.periodEndDate, 1) : rental.startDate,
-      cursorExists: false,
+      sequence: charge.chargeSequence + 1,
+      periodStart: addDays(lastDay, 1),
     };
   }
 
@@ -479,6 +473,9 @@ export class RentalService {
     now: Timestamp,
   ): ChargeDocument {
     const chargeReference = this.repository.chargeReference(rentalId, sequence);
+    const days = (Date.parse(periodEnd) - Date.parse(periodStart)) / 86_400_000 + 1;
+    // Round the prorated weekly rate to the nearest minor currency unit.
+    const amount = fromMinorUnits((toMinorUnits(rental.weeklyRate) * BigInt(days) + 3n) / 7n);
     return {
       id: chargeReference.id,
       rentalId,
@@ -488,45 +485,20 @@ export class RentalService {
       periodStartDate: periodStart,
       periodEndDate: periodEnd,
       dueDate: periodStart,
-      amount: rental.weeklyRate,
+      amount,
       currency: rental.currency,
       status: 'UNPAID',
       paidAmount: '0.00',
-      remainingAmount: rental.weeklyRate,
+      remainingAmount: amount,
       notes: `Recurring weekly charge #${sequence}`,
       createdAt: now,
       updatedAt: now,
     };
   }
 
-  async generateNext(rentalId: string): Promise<{ dto: RentalChargeDto; created: boolean }> {
-    const { result, created } = await this.firestore.runTransaction(async (transaction) => {
-      const rentalSnapshot = await transaction.get(this.repository.rentalReference(rentalId));
-      const rental = this.repository.readRental(rentalSnapshot);
-      const { sequence, periodStart } = await this.readNextChargeCursor(transaction, rentalId, rental);
-      if (rental.status === 'CANCELLED') {
-        throw new BusinessError('Cannot generate charges for a cancelled rental');
-      }
-      if (rental.actualClosedDate && isBefore(rental.actualClosedDate, periodStart)) {
-        throw new BusinessError(`Cannot generate charge after rental actual closed date: ${rental.actualClosedDate}`);
-      }
-      const chargeReference = this.repository.chargeReference(rentalId, sequence);
-      const existing = await transaction.get(chargeReference);
-      if (existing.exists) {
-        return { result: this.repository.readCharge(existing), created: false };
-      }
-      const period = RentalRepository.nextPeriod(periodStart);
-      const now = RentalRepository.timestamp();
-      const charge = this.buildRecurringCharge(rentalId, rental, sequence, periodStart, period.end, now);
-      transaction.create(chargeReference, charge);
-      transaction.set(this.repository.cursorReference(rentalId), {
-        nextSequence: sequence + 1,
-        nextPeriodStart: period.next,
-        updatedAt: now,
-      });
-      return { result: charge, created: true };
-    });
-    return { dto: chargeDto(result, result.paidAmount), created };
+  async generateNext(rentalId: string): Promise<RentalChargeDto> {
+    const [charge] = await this.generateCharges(rentalId);
+    return charge!;
   }
 
   async generateUpToDate(rentalId: string, targetDateValue: unknown): Promise<RentalChargeDto[]> {
@@ -535,77 +507,52 @@ export class RentalService {
     catch (error) {
       throw new ValidationError([{ field: 'targetDate', rejectedValue: targetDateValue ?? null, message: String(error).replace(/^Error: /, '') }]);
     }
+    return this.generateCharges(rentalId, targetDate);
+  }
+
+  private async generateCharges(rentalId: string, targetDate?: string): Promise<RentalChargeDto[]> {
     const generated = await this.firestore.runTransaction(async (transaction) => {
-      const attemptGenerated: ChargeDocument[] = [];
       const rentalSnapshot = await transaction.get(this.repository.rentalReference(rentalId));
       const rental = this.repository.readRental(rentalSnapshot);
-      const cursor = await this.readNextChargeCursor(transaction, rentalId, rental);
+      if (rental.status === 'CANCELLED') {
+        throw new BusinessError('Cannot generate charges for a cancelled rental');
+      }
+      const { sequence, periodStart } = await this.readNextChargePeriod(transaction, rentalId, rental);
+      const closedDate = rental.actualClosedDate;
+      if (!targetDate && closedDate && isBefore(closedDate, periodStart)) {
+        throw new BusinessError(`Cannot generate charge after rental actual closed date: ${closedDate}`);
+      }
 
-      const planned: Array<{
-        sequence: number;
-        periodStart: string;
-        periodEnd: string;
-        nextPeriodStart: string;
-        reference: FirebaseFirestore.DocumentReference;
-      }> = [];
-      let nextSequence = cursor.sequence;
-      let nextPeriodStart = cursor.periodStart;
-
-      while (!isBefore(targetDate, nextPeriodStart) &&
-             !(rental.actualClosedDate && isBefore(rental.actualClosedDate, nextPeriodStart))) {
-        if (rental.status === 'CANCELLED') {
-          throw new BusinessError('Cannot generate charges for a cancelled rental');
-        }
-        if (planned.length >= MAX_ATOMIC_GENERATED_CHARGES) {
+      const requestedEnd = targetDate ?? RentalRepository.nextPeriod(periodStart).end;
+      const lastDay = closedDate && isBefore(closedDate, requestedEnd) ? closedDate : requestedEnd;
+      const now = RentalRepository.timestamp();
+      const charges: ChargeDocument[] = [];
+      let nextSequence = sequence;
+      let nextPeriodStart = periodStart;
+      while (!isBefore(lastDay, nextPeriodStart)) {
+        if (charges.length >= MAX_ATOMIC_GENERATED_CHARGES) {
           throw new OperationalError(
             `Requested charge generation exceeds the ${MAX_ATOMIC_GENERATED_CHARGES}-charge atomic transaction limit`,
           );
         }
-        const period = RentalRepository.nextPeriod(nextPeriodStart);
-        planned.push({
-          sequence: nextSequence,
-          periodStart: nextPeriodStart,
-          periodEnd: period.end,
-          nextPeriodStart: period.next,
-          reference: this.repository.chargeReference(rentalId, nextSequence),
-        });
+        const weeklyEnd = RentalRepository.nextPeriod(nextPeriodStart).end;
+        const periodEnd = isBefore(lastDay, weeklyEnd) ? lastDay : weeklyEnd;
+        charges.push(this.buildRecurringCharge(rentalId, rental, nextSequence, nextPeriodStart, periodEnd, now));
         nextSequence += 1;
-        nextPeriodStart = period.next;
+        nextPeriodStart = addDays(periodEnd, 1);
       }
 
-      if (planned.length === 0) {
-        return attemptGenerated;
+      for (const charge of charges) {
+        transaction.create(this.repository.chargeReference(rentalId, charge.chargeSequence), charge);
       }
-
-      const existingSnapshots = await transaction.getAll(...planned.map((item) => item.reference));
-      const now = RentalRepository.timestamp();
-
-      for (let index = 0; index < planned.length; index += 1) {
-        if (existingSnapshots[index]!.exists) {
-          continue;
-        }
-        const item = planned[index]!;
-        const charge = this.buildRecurringCharge(
-          rentalId,
-          rental,
-          item.sequence,
-          item.periodStart,
-          item.periodEnd,
-          now,
-        );
-        transaction.create(item.reference, charge);
-        attemptGenerated.push(charge);
-      }
-
-      if (attemptGenerated.length > 0 || !cursor.cursorExists) {
-        const last = planned[planned.length - 1]!;
+      if (charges.length > 0) {
         transaction.set(this.repository.cursorReference(rentalId), {
-          nextSequence: last.sequence + 1,
-          nextPeriodStart: last.nextPeriodStart,
+          nextSequence,
+          nextPeriodStart,
           updatedAt: now,
         });
       }
-      return attemptGenerated;
+      return charges;
     });
     return generated.map((charge) => chargeDto(charge, charge.paidAmount));
   }
